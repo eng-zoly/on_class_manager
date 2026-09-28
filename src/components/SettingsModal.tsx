@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AppUser } from '../types';
 import { 
@@ -56,6 +56,7 @@ interface SettingsModalProps {
   onChangePasswordClick: () => void;
   appUser: AppUser | null;
   isAdmin: boolean;
+  initialSection?: SettingsSection;
 }
 
 type SettingsSection = 'appearance' | 'date' | 'backup' | 'update' | 'account';
@@ -82,9 +83,17 @@ export default function SettingsModal({
   onResetDatabaseToSeed,
   onChangePasswordClick,
   appUser,
-  isAdmin
+  isAdmin,
+  initialSection = 'appearance'
 }: SettingsModalProps) {
-  const [activeSection, setActiveSection] = useState<SettingsSection>('appearance');
+  const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection);
+
+  useEffect(() => {
+    if (isOpen && initialSection) {
+      setActiveSection(initialSection);
+    }
+  }, [isOpen, initialSection]);
+
   const [searchQuery, setSearchQuery] = useState('');
   
   // Software Update State

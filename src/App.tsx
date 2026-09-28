@@ -90,14 +90,15 @@ const DEFAULT_SETTINGS: NotificationSettings = {
 };
 
 const ToggleSwitch = ({ label, description, checked, onChange, id }: { label: string; description: string; checked: boolean; onChange: (val: boolean) => void; id: string }) => (
-  <div className="flex items-center justify-between py-3 border-b border-slate-100 last:border-0" id={id}>
+  <div className="flex items-center justify-between py-3 border-b border-black/[0.04] dark:border-white/[0.06] last:border-0" id={id}>
     <div className="pr-4">
-      <span className="text-xs font-bold text-slate-800 block">{label}</span>
-      <span className="text-[10px] text-slate-500">{description}</span>
+      <span className="text-xs font-bold text-slate-800 dark:text-slate-100 block">{label}</span>
+      <span className="text-[10px] text-slate-500 dark:text-slate-400">{description}</span>
     </div>
     <button
+      type="button"
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${checked ? 'bg-indigo-600' : 'bg-slate-200'}`}
+      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${checked ? 'bg-[#007AFF]' : 'bg-slate-200 dark:bg-slate-700'}`}
     >
       <span
         className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${checked ? 'translate-x-4' : 'translate-x-0'}`}
@@ -147,6 +148,7 @@ export default function App() {
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [settingsInitialSection, setSettingsInitialSection] = useState<'appearance' | 'date' | 'backup' | 'update' | 'account'>('appearance');
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     try {
       return (localStorage.getItem('app_theme') as ThemeMode) || 'system';
@@ -1532,6 +1534,7 @@ export default function App() {
       <SettingsModal
         isOpen={showSettingsModal}
         onClose={() => setShowSettingsModal(false)}
+        initialSection={settingsInitialSection}
         themeMode={themeMode}
         onThemeChange={handleThemeChange}
         referenceDate={referenceDate}
@@ -1614,118 +1617,204 @@ export default function App() {
               initial={{ x: "100%" }}
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
-              transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="fixed top-0 bottom-0 right-0 w-full sm:w-[400px] bg-white border-l border-slate-200 shadow-2xl z-50 flex flex-col"
+              transition={{ type: "spring", damping: 28, stiffness: 300 }}
+              className="fixed top-0 bottom-0 right-0 w-full sm:w-[420px] bg-[#FBFBFD]/95 dark:bg-[#1E1E22]/95 backdrop-blur-2xl border-l border-black/[0.08] dark:border-white/[0.08] shadow-2xl z-50 flex flex-col sm:rounded-l-3xl overflow-hidden font-sans select-none"
               id="notification-side-drawer"
             >
-              {/* Drawer Header */}
-              <div className="p-4 sm:p-5 border-b border-slate-200/80 flex items-center justify-between bg-slate-50/50">
-                <div className="flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                    <Bell className="h-4.5 w-4.5" />
+              {/* Modern macOS Drawer Header */}
+              <div className="px-5 py-4 border-b border-black/[0.06] dark:border-white/[0.06] flex items-center justify-between bg-white/60 dark:bg-black/20 backdrop-blur-md">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20 relative shrink-0">
+                    <Bell className="w-4.5 h-4.5" />
+                    {notifications.length > 0 && (
+                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-[#FF3B30] rounded-full ring-2 ring-white dark:ring-[#1E1E22] animate-pulse" />
+                    )}
                   </div>
                   <div>
-                    <h3 className="text-sm font-extrabold text-slate-900">មជ្ឈមណ្ឌលជូនដំណឹង</h3>
-                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Notification Center</p>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-tight">
+                        មជ្ឈមណ្ឌលជូនដំណឹង
+                      </h3>
+                      {notifications.length > 0 && (
+                        <span className="px-1.5 py-0.2 rounded-full bg-blue-500/10 text-[#007AFF] text-[10px] font-bold">
+                          {notifications.length} ថ្មី
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-semibold tracking-wider uppercase">
+                      Notification Center
+                    </p>
                   </div>
                 </div>
+
                 <button
+                  type="button"
                   onClick={() => setShowNotificationDrawer(false)}
-                  className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                  className="w-7 h-7 rounded-full bg-black/[0.05] hover:bg-black/[0.1] dark:bg-white/[0.08] dark:hover:bg-white/[0.15] text-slate-500 dark:text-slate-300 flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+                  title="បិទ (Close)"
                 >
-                  <X className="h-4.5 w-4.5" />
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </div>
 
-              {/* Navigation Tabs */}
-              <div className="flex border-b border-slate-100 px-3 py-1 bg-white shrink-0">
-                <button
-                  onClick={() => setDrawerTab('logs')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer ${
-                    drawerTab === 'logs'
-                      ? 'border-indigo-600 text-indigo-600'
-                      : 'border-transparent text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <Sliders className="h-3.5 w-3.5" />
-                  <span>ប្រវត្តិជូនដំណឹង ({notifications.length})</span>
-                </button>
-                <button
-                  onClick={() => setDrawerTab('settings')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer ${
-                    drawerTab === 'settings'
-                      ? 'border-indigo-600 text-indigo-600'
-                      : 'border-transparent text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <Settings className="h-3.5 w-3.5" />
-                  <span>ការកំណត់ (Settings)</span>
-                </button>
+              {/* Modern macOS Segmented Capsule Tabs */}
+              <div className="px-5 pt-3 pb-2 shrink-0">
+                <div className="p-1 rounded-xl bg-black/[0.05] dark:bg-white/[0.08] flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setDrawerTab('logs')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      drawerTab === 'logs'
+                        ? 'bg-white dark:bg-[#2C2C2E] text-slate-900 dark:text-white shadow-xs font-bold'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <Sliders className="w-3.5 h-3.5" />
+                    <span>ប្រវត្តិ ({notifications.length})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDrawerTab('settings')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      drawerTab === 'settings'
+                        ? 'bg-white dark:bg-[#2C2C2E] text-slate-900 dark:text-white shadow-xs font-bold'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <Settings className="w-3.5 h-3.5" />
+                    <span>ការកំណត់ (Settings)</span>
+                  </button>
+                </div>
               </div>
 
               {/* Content Body */}
-              <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+              <div className="flex-1 overflow-y-auto p-5 scrollbar-none">
                 {drawerTab === 'logs' ? (
                   <div className="space-y-3 h-full flex flex-col justify-between">
                     <div className="space-y-3">
                       {notifications.length > 0 && (
-                        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                          <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold">
+                        <div className="flex items-center justify-between pb-1 text-xs border-b border-black/[0.04] dark:border-white/[0.05]">
+                          <span className="text-[11px] font-mono font-medium text-slate-400">
                             សរុប {notifications.length} កំណត់ត្រា
                           </span>
                           <button
+                            type="button"
                             onClick={() => {
-                              if (confirm('តើអ្នកពិតជាចង់លុបចោលប្រវត្តិជូនដំណឹងទាំងអស់មែនទេ?')) {
+                              if (confirm('តើអ្នកពិតជាចង់សម្អាតប្រវត្តិជូនដំណឹងទាំងអស់មែនទេ?')) {
                                 saveNotifications([]);
                               }
                             }}
-                            className="flex items-center gap-1 text-[10px] text-red-500 hover:text-red-700 font-bold hover:bg-red-50 px-2 py-1 rounded transition-colors cursor-pointer"
+                            className="px-2 py-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-500 hover:text-rose-600 text-[11px] font-semibold transition-colors flex items-center gap-1 cursor-pointer"
                           >
-                            <Trash2 className="h-3 w-3" />
-                            <span>លុបទាំងអស់ (Clear All)</span>
+                            <Trash2 className="w-3 h-3" />
+                            <span>សម្អាតទាំងអស់</span>
                           </button>
                         </div>
                       )}
 
                       {notifications.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-20 text-center h-full">
-                          <div className="h-12 w-12 rounded-full bg-slate-50 text-slate-300 flex items-center justify-center mb-3">
-                            <BellOff className="h-6 w-6" />
+                        <div className="flex flex-col items-center justify-center py-20 text-center">
+                          <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-blue-500/10 to-indigo-500/10 dark:from-white/5 dark:to-white/10 text-[#007AFF] flex items-center justify-center mb-3 ring-1 ring-[#007AFF]/20 shadow-xs">
+                            <BellOff className="w-8 h-8 opacity-80" />
                           </div>
-                          <h4 className="text-xs font-bold text-slate-800">គ្មានប្រវត្តិជូនដំណឹង</h4>
-                          <p className="text-[10px] text-slate-500 mt-1 max-w-[240px]">រាល់ការចុះឈ្មោះ កែប្រែ ឬការបង្កើតរបាយការណ៍នឹងបង្ហាញនៅទីនេះ។</p>
+                          <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">គ្មានប្រវត្តិជូនដំណឹង</h4>
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 max-w-[240px] leading-relaxed">
+                            រាល់ការចុះឈ្មោះ កំណែថ្មី ឬការបង្កើតរបាយការណ៍នឹងបង្ហាញនៅទីនេះ។
+                          </p>
                         </div>
                       ) : (
-                        <div className="space-y-2 max-h-[calc(100vh-210px)] overflow-y-auto pr-1">
+                        <div className="space-y-2.5 max-h-[calc(100vh-190px)] overflow-y-auto pr-0.5 scrollbar-none">
                           {notifications.map((n) => {
                             let IconC = Bell;
-                            let themeCls = "bg-indigo-50 text-indigo-600";
-                            if (n.type === 'student') { IconC = Users; themeCls = "bg-blue-50 text-blue-600"; }
-                            else if (n.type === 'grading') { IconC = CheckSquare; themeCls = "bg-emerald-50 text-emerald-600"; }
-                            else if (n.type === 'exams') { IconC = Award; themeCls = "bg-amber-50 text-amber-600"; }
-                            else if (n.type === 'payroll') { IconC = DollarSign; themeCls = "bg-green-50 text-green-600"; }
-                            else if (n.type === 'backup') { IconC = Database; themeCls = "bg-purple-50 text-purple-600"; }
+                            let squircleBg = "bg-gradient-to-tr from-blue-500 to-indigo-600 text-white";
+                            let categoryLabel = "ប្រព័ន្ធ";
+                            const isUpdate = n.type === 'system' || n.title.includes('កំណែ') || n.title.toLowerCase().includes('update');
+
+                            if (n.type === 'student') {
+                              IconC = Users;
+                              squircleBg = "bg-gradient-to-tr from-emerald-400 to-teal-600 text-white";
+                              categoryLabel = "សិស្ស";
+                            } else if (n.type === 'grading') {
+                              IconC = CheckSquare;
+                              squircleBg = "bg-gradient-to-tr from-sky-400 to-blue-600 text-white";
+                              categoryLabel = "លំហាត់";
+                            } else if (n.type === 'exams') {
+                              IconC = Award;
+                              squircleBg = "bg-gradient-to-tr from-amber-400 to-orange-500 text-white";
+                              categoryLabel = "ប្រឡង";
+                            } else if (n.type === 'payroll') {
+                              IconC = DollarSign;
+                              squircleBg = "bg-gradient-to-tr from-emerald-500 to-green-600 text-white";
+                              categoryLabel = "ប្រាក់កម្រៃ";
+                            } else if (n.type === 'backup') {
+                              IconC = Database;
+                              squircleBg = "bg-gradient-to-tr from-purple-500 to-violet-600 text-white";
+                              categoryLabel = "ទិន្នន័យ";
+                            } else if (isUpdate) {
+                              IconC = Sparkles;
+                              squircleBg = "bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 text-white";
+                              categoryLabel = "ការអាប់ដេត";
+                            }
 
                             return (
                               <div
                                 key={n.id}
-                                className="flex items-start gap-2.5 p-3 rounded-lg border border-slate-100 hover:border-slate-200 hover:bg-slate-50/50 transition-all relative group"
+                                className="p-3.5 rounded-2xl bg-white dark:bg-[#28282B] border border-black/[0.06] dark:border-white/[0.06] shadow-xs hover:shadow-md transition-all relative group/card space-y-2"
                               >
-                                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${themeCls}`}>
-                                  <IconC className="h-3.5 w-3.5" />
+                                {/* Card Header Row */}
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <div className={`w-6 h-6 rounded-lg ${squircleBg} flex items-center justify-center shrink-0 shadow-2xs`}>
+                                      <IconC className="w-3.5 h-3.5" />
+                                    </div>
+                                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                      {categoryLabel}
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-mono text-slate-400">
+                                      {n.timestamp}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => saveNotifications(notifications.filter(x => x.id !== n.id))}
+                                      className="w-5 h-5 rounded-md hover:bg-black/[0.06] dark:hover:bg-white/[0.1] text-slate-300 hover:text-rose-500 flex items-center justify-center opacity-0 group-hover/card:opacity-100 transition-all cursor-pointer"
+                                      title="លុប"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </div>
                                 </div>
-                                <div className="flex-1 min-w-0 pr-4">
-                                  <span className="text-[11px] font-bold text-slate-900 block leading-tight">{n.title}</span>
-                                  <span className="text-[10px] text-slate-600 mt-1 block leading-normal">{n.message}</span>
-                                  <span className="text-[8px] font-mono text-slate-400 mt-1 block">{n.timestamp}</span>
+
+                                {/* Card Title & Content */}
+                                <div className="space-y-1">
+                                  <h4 className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
+                                    {n.title}
+                                  </h4>
+                                  <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed font-sans">
+                                    {n.message}
+                                  </p>
                                 </div>
-                                <button
-                                  onClick={() => saveNotifications(notifications.filter(x => x.id !== n.id))}
-                                  className="absolute top-2.5 right-2.5 text-slate-300 hover:text-red-500 p-1 rounded hover:bg-slate-100 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
-                                  title="លុបចោល"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
+
+                                {/* Direct Action Button for Update */}
+                                {isUpdate && (
+                                  <div className="pt-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSettingsInitialSection('update');
+                                        setShowNotificationDrawer(false);
+                                        setShowSettingsModal(true);
+                                      }}
+                                      className="w-full py-1.5 px-3 rounded-lg bg-[#007AFF] hover:bg-[#0066D6] text-white text-[11px] font-semibold transition-all flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer active:scale-98"
+                                    >
+                                      <RefreshCw className="w-3 h-3" />
+                                      <span>ចូលទៅកាន់ការអាប់ដេត (Go to Updates)</span>
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
@@ -1735,70 +1824,83 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex gap-2.5">
-                      <Info className="h-4 w-4 text-indigo-600 shrink-0 mt-0.5" />
-                      <p className="text-[10px] text-slate-600 leading-relaxed">
+                    <div className="p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-800/40 flex items-start gap-2.5">
+                      <Info className="w-4 h-4 text-[#007AFF] shrink-0 mt-0.5" />
+                      <p className="text-[11px] text-blue-900 dark:text-blue-200 leading-relaxed font-sans">
                         កំណត់សកម្មភាពណាខ្លះដែលគួរដាស់តឿន។ ការកំណត់ត្រូវបានចងភ្ជាប់ទៅក្នុងប្រព័ន្ធ និងជះឥទ្ធិពលភ្លាមៗ។
                       </p>
                     </div>
 
-                    <div className="divide-y divide-slate-100 bg-white border border-slate-100 rounded-xl px-4 py-1">
-                      <ToggleSwitch
-                        id="toggle-toast"
-                        label="បង្ហាញផ្ទាំងជូនដំណឹងរហ័ស (Toasts)"
-                        description="បង្ហាញផ្ទាំង Slide-up នៅជ្រុងខាងក្រោមពេលមានការប្រែប្រួល"
-                        checked={notificationSettings.enableToasts}
-                        onChange={(val) => saveNotificationSettings({ ...notificationSettings, enableToasts: val })}
-                      />
-                      <ToggleSwitch
-                        id="toggle-sound"
-                        label="សំឡេងដាស់តឿន (Alert Sound)"
-                        description="លេងសំឡេង Chime ស្រាលពេលមានសកម្មភាពថ្មី"
-                        checked={notificationSettings.enableSound}
-                        onChange={(val) => saveNotificationSettings({ ...notificationSettings, enableSound: val })}
-                      />
-                      <ToggleSwitch
-                        id="toggle-add"
-                        label="ការចុះឈ្មោះសិស្សថ្មី (Student Add)"
-                        description="ជូនដំណឹងរាល់ពេលចុះឈ្មោះសិស្សថ្មីចូលប្រព័ន្ធ"
-                        checked={notificationSettings.notifyOnStudentAdd}
-                        onChange={(val) => saveNotificationSettings({ ...notificationSettings, notifyOnStudentAdd: val })}
-                      />
-                      <ToggleSwitch
-                        id="toggle-edit"
-                        label="ការកែសម្រួលព័ត៌មាន (Student Edit)"
-                        description="ជូនដំណឹងពេលកែប្រែព័ត៌មានសិស្ស"
-                        checked={notificationSettings.notifyOnStudentEdit}
-                        onChange={(val) => saveNotificationSettings({ ...notificationSettings, notifyOnStudentEdit: val })}
-                      />
-                      <ToggleSwitch
-                        id="toggle-grading"
-                        label="ការវាយតម្លៃលំហាត់ (Checklist Grading)"
-                        description="ជូនដំណឹងពេលកែសម្រួលវឌ្ឍនភាពលំហាត់របស់សិស្ស"
-                        checked={notificationSettings.notifyOnGrading}
-                        onChange={(val) => saveNotificationSettings({ ...notificationSettings, notifyOnGrading: val })}
-                      />
-                      <ToggleSwitch
-                        id="toggle-exam"
-                        label="លទ្ធផលប្រឡងបញ្ចប់វគ្គ (Exams & Retakes)"
-                        description="ជូនដំណឹងពេលបញ្ចូលលទ្ធផលប្រឡង ឬកំណត់ប្រឡងឡើងវិញ"
-                        checked={notificationSettings.notifyOnExamChange}
-                        onChange={(val) => saveNotificationSettings({ ...notificationSettings, notifyOnExamChange: val })}
-                      />
-                      <ToggleSwitch
-                        id="toggle-payroll"
-                        label="របាយការណ៍ប្រាក់កម្រៃគ្រូ (Teacher Payroll)"
-                        description="ជូនដំណឹងពេលរក្សាទុក ឬលុបចោលរបាយការណ៍កម្រៃគ្រូ"
-                        checked={notificationSettings.notifyOnPayroll}
-                        onChange={(val) => saveNotificationSettings({ ...notificationSettings, notifyOnPayroll: val })}
-                      />
-                      <ToggleSwitch
-                        id="toggle-backup"
-                        label="ការចម្លង និងស្ដារទិន្នន័យ (Backup / Seed)"
-                        description="ជូនដំណឹងពេលរក្សាទុក ស្ដារ ឬកំណត់ទិន្នន័យឡើងវិញ"
-                        checked={notificationSettings.notifyOnBackup}
-                        onChange={(val) => saveNotificationSettings({ ...notificationSettings, notifyOnBackup: val })}
-                      />
+                    <div className="space-y-1">
+                      <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1">
+                        ជម្រើសដាស់តឿនទូទៅ
+                      </span>
+                      <div className="bg-white dark:bg-[#28282B] rounded-2xl border border-black/[0.06] dark:border-white/[0.06] shadow-xs px-4 py-1 divide-y divide-black/[0.04] dark:divide-white/[0.06]">
+                        <ToggleSwitch
+                          id="toggle-toast"
+                          label="បង្ហាញផ្ទាំងជូនដំណឹងរហ័ស (Toasts)"
+                          description="បង្ហាញផ្ទាំង Slide-up នៅជ្រុងខាងក្រោមពេលមានការប្រែប្រួល"
+                          checked={notificationSettings.enableToasts}
+                          onChange={(val) => saveNotificationSettings({ ...notificationSettings, enableToasts: val })}
+                        />
+                        <ToggleSwitch
+                          id="toggle-sound"
+                          label="សំឡេងដាស់តឿន (Alert Sound)"
+                          description="លេងសំឡេង Chime ស្រាលពេលមានសកម្មភាពថ្មី"
+                          checked={notificationSettings.enableSound}
+                          onChange={(val) => saveNotificationSettings({ ...notificationSettings, enableSound: val })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1">
+                        ការជូនដំណឹងតាមមុខងារ
+                      </span>
+                      <div className="bg-white dark:bg-[#28282B] rounded-2xl border border-black/[0.06] dark:border-white/[0.06] shadow-xs px-4 py-1 divide-y divide-black/[0.04] dark:divide-white/[0.06]">
+                        <ToggleSwitch
+                          id="toggle-add"
+                          label="ការចុះឈ្មោះសិស្សថ្មី (Student Add)"
+                          description="ជូនដំណឹងរាល់ពេលចុះឈ្មោះសិស្សថ្មីចូលប្រព័ន្ធ"
+                          checked={notificationSettings.notifyOnStudentAdd}
+                          onChange={(val) => saveNotificationSettings({ ...notificationSettings, notifyOnStudentAdd: val })}
+                        />
+                        <ToggleSwitch
+                          id="toggle-edit"
+                          label="ការកែសម្រួលព័ត៌មាន (Student Edit)"
+                          description="ជូនដំណឹងពេលកែប្រែព័ត៌មានសិស្ស"
+                          checked={notificationSettings.notifyOnStudentEdit}
+                          onChange={(val) => saveNotificationSettings({ ...notificationSettings, notifyOnStudentEdit: val })}
+                        />
+                        <ToggleSwitch
+                          id="toggle-grading"
+                          label="ការវាយតម្លៃលំហាត់ (Checklist Grading)"
+                          description="ជូនដំណឹងពេលកែសម្រួលវឌ្ឍនភាពលំហាត់របស់សិស្ស"
+                          checked={notificationSettings.notifyOnGrading}
+                          onChange={(val) => saveNotificationSettings({ ...notificationSettings, notifyOnGrading: val })}
+                        />
+                        <ToggleSwitch
+                          id="toggle-exam"
+                          label="លទ្ធផលប្រឡងបញ្ចប់វគ្គ (Exams & Retakes)"
+                          description="ជូនដំណឹងពេលបញ្ចូលលទ្ធផលប្រឡង ឬកំណត់ប្រឡងឡើងវិញ"
+                          checked={notificationSettings.notifyOnExamChange}
+                          onChange={(val) => saveNotificationSettings({ ...notificationSettings, notifyOnExamChange: val })}
+                        />
+                        <ToggleSwitch
+                          id="toggle-payroll"
+                          label="របាយការណ៍ប្រាក់កម្រៃគ្រូ (Teacher Payroll)"
+                          description="ជូនដំណឹងពេលរក្សាទុក ឬលុបចោលរបាយការណ៍កម្រៃគ្រូ"
+                          checked={notificationSettings.notifyOnPayroll}
+                          onChange={(val) => saveNotificationSettings({ ...notificationSettings, notifyOnPayroll: val })}
+                        />
+                        <ToggleSwitch
+                          id="toggle-backup"
+                          label="ការចម្លង និងស្ដារទិន្នន័យ (Backup / Seed)"
+                          description="ជូនដំណឹងពេលរក្សាទុក ស្ដារ ឬកំណត់ទិន្នន័យឡើងវិញ"
+                          checked={notificationSettings.notifyOnBackup}
+                          onChange={(val) => saveNotificationSettings({ ...notificationSettings, notifyOnBackup: val })}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
