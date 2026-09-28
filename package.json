@@ -2,7 +2,7 @@
   "name": "classmanager",
   "productName": "ClassManager",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "ClassManager - Desktop App for managing students",
   "author": "Chan Eng Dom <chanengdom12@gmail.com>",
   "main": "electron-dist/main.js",

@@ -45,7 +45,7 @@ export const compareVersions = (v1: string, v2: string): number => {
   return 0;
 };
 
-export const APP_VERSION = '1.0.1';
+export const APP_VERSION = '1.0.2';
 
 /**
  * Check for updates against GitHub Releases API
