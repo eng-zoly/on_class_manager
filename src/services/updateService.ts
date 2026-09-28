@@ -15,7 +15,7 @@ export const getUpdateConfig = () => {
   const savedOwner = localStorage.getItem('classmanager_github_owner');
   const savedRepo = localStorage.getItem('classmanager_github_repo');
   return {
-    owner: savedOwner || 'engzoly',
+    owner: savedOwner || 'eng-zoly',
     repo: savedRepo || 'on_class_manager'
   };
 };

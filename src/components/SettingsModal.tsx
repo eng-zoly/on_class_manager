@@ -526,7 +526,7 @@ export default function SettingsModal({
                           type="text"
                           value={repoOwnerInput}
                           onChange={(e) => setRepoOwnerInput(e.target.value)}
-                          placeholder="engzoly"
+                          placeholder="eng-zoly"
                           className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-mono bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white"
                         />
                       </div>

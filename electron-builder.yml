@@ -58,5 +58,5 @@ linux:
 # ── Auto-update (GitHub Releases) ──────────────────────────────
 publish:
   provider: github
-  owner: engzoly
+  owner: eng-zoly
   repo: on_class_manager
