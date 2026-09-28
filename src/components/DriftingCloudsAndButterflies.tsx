@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 
 interface CloudConfig {
   id: number;
@@ -18,9 +18,14 @@ const CLOUD_CONFIGS: CloudConfig[] = [
   { id: 5, top: 210, scale: 1.0, duration: 70, delay: -35, opacity: 0.15, width: 230 }
 ];
 
-export default function DriftingCloudsAndButterflies() {
+function DriftingCloudsAndButterflies() {
   return (
-    <div className="fixed inset-0 pointer-events-none overflow-hidden z-0" id="clouds-layer" aria-hidden="true">
+    <div 
+      className="fixed inset-0 pointer-events-none overflow-hidden z-0 select-none" 
+      id="clouds-layer" 
+      aria-hidden="true"
+      style={{ contain: 'strict', contentVisibility: 'auto' }}
+    >
       <style>{`
         @keyframes driftCloud {
           0% {
@@ -65,3 +70,5 @@ export default function DriftingCloudsAndButterflies() {
     </div>
   );
 }
+
+export default memo(DriftingCloudsAndButterflies);

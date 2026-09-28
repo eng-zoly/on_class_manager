@@ -1,5 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+
+// Cached AudioContext singleton to prevent audio hardware pipeline blocking on UI thread
+let cachedAudioCtx: AudioContext | null = null;
+function getSharedAudioContext(): AudioContext | null {
+  try {
+    if (!cachedAudioCtx) {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        cachedAudioCtx = new AudioCtx();
+      }
+    }
+    if (cachedAudioCtx && cachedAudioCtx.state === 'suspended') {
+      cachedAudioCtx.resume().catch(() => {});
+    }
+    return cachedAudioCtx;
+  } catch {
+    return null;
+  }
+}
 import { Student, PayrollReport, CourseType, SubjectChecklist, COURSE_CONFIG, ExamResult, AppNotification, NotificationSettings } from './types';
 import { INITIAL_STUDENTS, INITIAL_PAYROLL_REPORTS } from './data/demoData';
 import { generateNextStudentId, getStudentStatus, isStudentExamEligible } from './utils/studentUtils';
@@ -200,6 +219,28 @@ export default function App() {
   // All students visible in personal system
   const visibleStudents = students;
 
+  // Memoized unarchived students for tab components
+  const unarchivedVisibleStudents = useMemo(() => {
+    return visibleStudents.filter(s => !s.archived);
+  }, [visibleStudents]);
+
+  // Memoized badge metrics calculated in a single fast pass
+  const { expiringBadgeCount, examReadyBadgeCount } = useMemo(() => {
+    let exp = 0;
+    let exam = 0;
+    for (const s of visibleStudents) {
+      if (!s.dropout && !s.archived) {
+        const status = getStudentStatus(s.end_date, referenceDate, s.exam_result);
+        if (status === 'Expiring Soon' || status === 'Expired') exp++;
+        if (isStudentExamEligible(s, courseConfig)) exam++;
+      }
+    }
+    return { expiringBadgeCount: exp, examReadyBadgeCount: exam };
+  }, [visibleStudents, referenceDate, courseConfig]);
+
+  // Ref to debounce rapid grading notifications
+  const gradingNotifTimerRef = useRef<any>(null);
+
   // Auto-sync real-time date with computer clock (midnight updates, window focus, interval)
   useEffect(() => {
     const syncTodayDate = () => {
@@ -344,11 +385,12 @@ export default function App() {
     };
   }, [isAuthenticated]);
 
-  // Gentle synth chime notification sound using the Web Audio API
+  // Gentle synth chime notification sound using the cached Web Audio API
   const playChime = () => {
     if (!notificationSettings.enableSound) return;
     try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const ctx = getSharedAudioContext();
+      if (!ctx) return;
       const osc1 = ctx.createOscillator();
       const osc2 = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -481,27 +523,39 @@ export default function App() {
   };
 
   // Helper to persist students
-  const saveStudents = (updatedStudents: Student[]) => {
+  const saveStudents = (updatedStudents: Student[], syncAllToCloud = false) => {
     setStudents(updatedStudents);
-    localStorage.setItem('school_students', JSON.stringify(updatedStudents));
-    syncAllStudentsToCloud(updatedStudents);
+    try {
+      localStorage.setItem('school_students', JSON.stringify(updatedStudents));
+    } catch (e) {
+      console.warn("Failed saving students to localStorage:", e);
+    }
+    if (syncAllToCloud) {
+      syncAllStudentsToCloud(updatedStudents);
+    }
     fetch('/api/db/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ students: updatedStudents })
-    }).catch(err => console.error("Failed to update students on server:", err));
+    }).catch(() => {});
   };
 
   // Helper to persist payroll reports
-  const saveReports = (updatedReports: PayrollReport[]) => {
+  const saveReports = (updatedReports: PayrollReport[], syncAllToCloud = false) => {
     setPayrollReports(updatedReports);
-    localStorage.setItem('school_payroll_reports', JSON.stringify(updatedReports));
-    syncAllPayrollReportsToCloud(updatedReports);
+    try {
+      localStorage.setItem('school_payroll_reports', JSON.stringify(updatedReports));
+    } catch (e) {
+      console.warn("Failed saving payroll reports to localStorage:", e);
+    }
+    if (syncAllToCloud) {
+      syncAllPayrollReportsToCloud(updatedReports);
+    }
     fetch('/api/db/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ payrollReports: updatedReports })
-    }).catch(err => console.error("Failed to update reports on server:", err));
+    }).catch(() => {});
   };
 
   // Helper to persist date changes
@@ -664,14 +718,20 @@ export default function App() {
     });
     saveStudents(updated);
 
-    const studentNames = Array.isArray(studentId)
-      ? `សិស្សចំនួន ${studentId.length} នាក់`
-      : students.find(s => s.student_id === studentId)?.full_name || studentId;
-    addNotification(
-      'grading',
-      'វាយតម្លៃការកត់លំហាត់ (Exercises Graded)',
-      `លំហាត់របស់ ${studentNames} ត្រូវបានកែសម្រួល និងកត់ត្រាជោគជ័យ។`
-    );
+    // Debounce notification so rapid checkbox clicks don't spam toasts and chimes
+    if (gradingNotifTimerRef.current) {
+      clearTimeout(gradingNotifTimerRef.current);
+    }
+    gradingNotifTimerRef.current = setTimeout(() => {
+      const studentNames = Array.isArray(studentId)
+        ? `សិស្សចំនួន ${studentId.length} នាក់`
+        : students.find(s => s.student_id === studentId)?.full_name || studentId;
+      addNotification(
+        'grading',
+        'វាយតម្លៃការកត់លំហាត់ (Exercises Graded)',
+        `លំហាត់របស់ ${studentNames} ត្រូវបានកែសម្រួល និងកត់ត្រាជោគជ័យ។`
+      );
+    }, 700);
   };
 
   // Workflow C: Renewal Handler
@@ -994,8 +1054,8 @@ export default function App() {
         try {
           const parsed = JSON.parse(event.target?.result as string);
           if (parsed.students && parsed.payrollReports) {
-            saveStudents(parsed.students);
-            saveReports(parsed.payrollReports);
+            saveStudents(parsed.students, true);
+            saveReports(parsed.payrollReports, true);
             if (parsed.courseConfig) {
               saveCourseConfig(parsed.courseConfig);
             }
@@ -1225,17 +1285,9 @@ export default function App() {
               >
                 <div className="relative">
                   <Clock className={`h-5 w-5 shrink-0 transition-colors ${activeTab === 'expiry' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`} />
-                  {visibleStudents.filter(s => {
-                    if (s.dropout) return false;
-                    const status = getStudentStatus(s.end_date, referenceDate, s.exam_result);
-                    return status === 'Expiring Soon' || status === 'Expired';
-                  }).length > 0 && (
-                    <span className="absolute -top-1.5 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[9px] text-white font-black animate-pulse shadow-sm shadow-orange-200">
-                      {visibleStudents.filter(s => {
-                        if (s.dropout) return false;
-                        const status = getStudentStatus(s.end_date, referenceDate, s.exam_result);
-                        return status === 'Expiring Soon' || status === 'Expired';
-                      }).length}
+                  {expiringBadgeCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[9px] text-white font-black shadow-sm shadow-orange-200">
+                      {expiringBadgeCount}
                     </span>
                   )}
                 </div>
@@ -1263,9 +1315,9 @@ export default function App() {
               >
                 <div className="relative">
                   <Award className={`h-5 w-5 shrink-0 transition-colors ${activeTab === 'exams' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`} />
-                  {visibleStudents.filter(s => isStudentExamEligible(s, courseConfig)).length > 0 && (
-                    <span className="absolute -top-1.5 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] text-white font-black animate-pulse shadow-sm shadow-emerald-200">
-                      {visibleStudents.filter(s => isStudentExamEligible(s, courseConfig)).length}
+                  {examReadyBadgeCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] text-white font-black shadow-sm shadow-emerald-200">
+                      {examReadyBadgeCount}
                     </span>
                   )}
                 </div>
@@ -1391,7 +1443,7 @@ export default function App() {
 
               {activeTab === 'dashboard' && (
                 <Dashboard
-                  students={visibleStudents.filter(s => !s.archived)}
+                  students={unarchivedVisibleStudents}
                   referenceDate={referenceDate}
                   onSelectStudent={(s) => setDetailsStudent(s)}
                   onTabChange={(tab) => setActiveTab(tab)}
@@ -1401,7 +1453,7 @@ export default function App() {
 
               {activeTab === 'students' && (
                 <StudentList
-                  students={visibleStudents.filter(s => !s.archived)}
+                  students={unarchivedVisibleStudents}
                   referenceDate={referenceDate}
                   onSelectStudent={(s) => setDetailsStudent(s)}
                   onEditStudent={(s) => {
@@ -1438,7 +1490,7 @@ export default function App() {
 
               {activeTab === 'expiry' && (
                 <ExpiryCenter
-                  students={visibleStudents.filter(s => !s.archived)}
+                  students={unarchivedVisibleStudents}
                   referenceDate={referenceDate}
                   onRenewStudent={handleRenewStudent}
                   onSelectStudent={(s) => setDetailsStudent(s)}
@@ -1447,7 +1499,7 @@ export default function App() {
 
               {activeTab === 'exams' && (
                 <ExamCenter
-                  students={visibleStudents.filter(s => !s.archived)}
+                  students={unarchivedVisibleStudents}
                   referenceDate={referenceDate}
                   onRecordExamResult={handleRecordExamResult}
                   onSelectStudent={(s) => setDetailsStudent(s)}

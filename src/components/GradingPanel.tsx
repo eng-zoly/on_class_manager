@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Student, SubjectChecklist, ExerciseItem } from '../types';
 import { getSubjectProgress, isStudentExamEligible, formatReadableDate, getStudentStatus } from '../utils/studentUtils';
@@ -17,7 +17,7 @@ interface GradingPanelProps {
   onToggleDropout?: (studentId: string) => void;
 }
 
-export default function GradingPanel({
+function GradingPanel({
   students,
   selectedStudentId,
   referenceDate,
@@ -39,20 +39,36 @@ export default function GradingPanel({
   // Print state
   const [showPrintIframeWarning, setShowPrintIframeWarning] = useState(false);
 
-  const handlePrintGrading = () => {
-    document.body.classList.add('print-grading');
-    if (window.self !== window.top) {
-      setShowPrintIframeWarning(true);
-    } else {
-      const studentName = currentStudent?.full_name || 'សិស្ស';
-      const formattedDate = formatDateForFilename(new Date());
-      const pdfTitle = `របាយការណ៍វាយតម្លៃ_${sanitizeFilename(studentName)}_${formattedDate}`;
-      triggerPrintWithDynamicTitle(pdfTitle);
+  // Precomputed student progress cache (O(1) lookup per student item)
+  const studentProgressCache = useMemo(() => {
+    const map = new Map<string, { total: number; done: number; pct: number }>();
+    for (const s of students) {
+      let total = 0;
+      let done = 0;
+      for (const cl of s.checklists) {
+        total += cl.items.length;
+        for (const i of cl.items) {
+          if (i.completed) done++;
+        }
+      }
+      const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+      map.set(s.student_id, { total, done, pct });
     }
-    setTimeout(() => {
-      document.body.classList.remove('print-grading');
-    }, 1000);
-  };
+    return map;
+  }, [students]);
+
+  // Precomputed counts for active vs dropout
+  const { activeCount, dropoutCount } = useMemo(() => {
+    let act = 0;
+    let drop = 0;
+    for (const s of students) {
+      if (!s.archived && s.exam_result === 'Not Yet') {
+        if (s.dropout) drop++;
+        else act++;
+      }
+    }
+    return { activeCount: act, dropoutCount: drop };
+  }, [students]);
 
   // Non-archived students who have not yet taken the exam, sorted by name
   const activeStudents = useMemo(() => {
@@ -63,10 +79,12 @@ export default function GradingPanel({
 
   // Filter student list by search
   const filteredStudents = useMemo(() => {
+    if (!searchTerm.trim()) return activeStudents;
+    const term = searchTerm.toLowerCase().trim();
     return activeStudents.filter(s => 
-      (s.full_name && s.full_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (s.student_id && s.student_id.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (s.group && s.group.toLowerCase().includes(searchTerm.toLowerCase()))
+      (s.full_name && s.full_name.toLowerCase().includes(term)) ||
+      (s.student_id && s.student_id.toLowerCase().includes(term)) ||
+      (s.group && s.group.toLowerCase().includes(term))
     );
   }, [activeStudents, searchTerm]);
 
@@ -329,7 +347,7 @@ export default function GradingPanel({
                 : 'text-gray-500 hover:text-gray-800'
             }`}
           >
-            សកម្ម ({students.filter(s => !s.archived && s.exam_result === 'Not Yet' && !s.dropout).length})
+            សកម្ម ({activeCount})
           </button>
           <button
             type="button"
@@ -340,7 +358,7 @@ export default function GradingPanel({
                 : 'text-gray-500 hover:text-gray-800'
             }`}
           >
-            បោះបង់ ({students.filter(s => !s.archived && s.exam_result === 'Not Yet' && s.dropout).length})
+            បោះបង់ ({dropoutCount})
           </button>
         </div>
         
@@ -363,15 +381,7 @@ export default function GradingPanel({
           ) : (
             filteredStudents.map(student => {
               const isSelected = student.student_id === selectedStudentId;
-              
-              // Total progress calculation for subtitle
-              let total = 0;
-              let done = 0;
-              student.checklists.forEach(cl => {
-                total += cl.items.length;
-                done += cl.items.filter(i => i.completed).length;
-              });
-              const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+              const prog = studentProgressCache.get(student.student_id) || { total: 0, done: 0, pct: 0 };
               
               return (
                 <button
@@ -403,7 +413,7 @@ export default function GradingPanel({
                   <div className="flex justify-between items-center w-full mt-1.5 text-[10px]">
                     <span className={isSelected ? 'text-indigo-200' : 'text-gray-400'}>{student.group}</span>
                     <span className={`font-semibold ${isSelected ? 'text-indigo-100' : 'text-indigo-600'}`}>
-                      {pct}% ({done}/{total})
+                      {prog.pct}% ({prog.done}/{prog.total})
                     </span>
                   </div>
                 </button>
@@ -911,3 +921,5 @@ export default function GradingPanel({
     </div>
   );
 }
+
+export default memo(GradingPanel);

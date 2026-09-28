@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo, useMemo } from 'react';
 import { Student, COURSE_CONFIG } from '../types';
 import { getStudentStatus, getDaysRemaining, isStudentExamEligible, getSubjectProgress } from '../utils/studentUtils';
 import { Users, AlertTriangle, Clock, Award, DollarSign, Calendar, BookOpen, ChevronRight, Eye, EyeOff, CheckCircle2, Sparkles, RotateCcw } from 'lucide-react';
@@ -11,7 +11,7 @@ interface DashboardProps {
   courseConfig: any;
 }
 
-export default function Dashboard({ students, referenceDate, onSelectStudent, onTabChange, courseConfig }: DashboardProps) {
+function Dashboard({ students, referenceDate, onSelectStudent, onTabChange, courseConfig }: DashboardProps) {
   const [isPayrollHidden, setIsPayrollHidden] = React.useState(() => {
     return localStorage.getItem('payroll_hidden') === 'true';
   });
@@ -23,42 +23,78 @@ export default function Dashboard({ students, referenceDate, onSelectStudent, on
     localStorage.setItem('payroll_hidden', String(newValue));
   };
 
-  // Filters & Calculations
-  const activeStudents = students.filter(s => !s.dropout && getStudentStatus(s.end_date, referenceDate, s.exam_result) === 'Active');
-  const expiringSoonStudents = students.filter(s => !s.dropout && getStudentStatus(s.end_date, referenceDate, s.exam_result) === 'Expiring Soon');
-  const expiredStudents = students.filter(s => !s.dropout && getStudentStatus(s.end_date, referenceDate, s.exam_result) === 'Expired');
-  
-  const examReadyStudents = students.filter(s => !s.dropout && isStudentExamEligible(s));
-  const unreportedStudents = students.filter(
-    s => !s.dropout && !s.archived && s.reported_month === null && (s.student_type === 'New' || (s.student_type === 'Continuing' && s.pending_renewal_fee === true))
-  );
+  // Memoized Filters & Aggregations in a single clean pass
+  const {
+    activeStudents,
+    expiringSoonStudents,
+    expiredStudents,
+    examReadyStudents,
+    unreportedStudents,
+    groupCounts,
+    courseCounts,
+    totalEnrollments,
+    estimatedPayroll,
+    urgentExpiries
+  } = useMemo(() => {
+    const active: Student[] = [];
+    const expiringSoon: Student[] = [];
+    const expired: Student[] = [];
+    const examReady: Student[] = [];
+    const unreported: Student[] = [];
+    const groups: Record<string, number> = {};
+    const courses: Record<string, number> = {};
 
-  // Group Distribution
-  const groupCounts: { [key: string]: number } = {};
-  students.forEach(s => {
-    if (!s.dropout && s.group) {
-      groupCounts[s.group] = (groupCounts[s.group] || 0) + 1;
+    for (const courseKey of Object.keys(courseConfig || {})) {
+      courses[courseKey] = 0;
     }
-  });
 
-  // Dynamic Course Enrollment Breakdown
-  const courseCounts = Object.keys(courseConfig || {}).reduce((acc, courseKey) => {
-    acc[courseKey] = students.filter(s => !s.dropout && s.course === courseKey).length;
-    return acc;
-  }, {} as Record<string, number>);
+    for (const s of students) {
+      if (s.dropout) continue;
+      const status = getStudentStatus(s.end_date, referenceDate, s.exam_result);
+      if (status === 'Active') active.push(s);
+      else if (status === 'Expiring Soon') expiringSoon.push(s);
+      else if (status === 'Expired') expired.push(s);
 
-  const totalEnrollments = Object.values(courseCounts).reduce((a, b) => a + b, 0);
+      if (isStudentExamEligible(s, courseConfig)) {
+        examReady.push(s);
+      }
 
-  // Dynamic Potential Payroll Calculation (Includes both New & Renewed/Continuing unreported students)
-  const estimatedPayroll = unreportedStudents.reduce((acc, s) => {
-    const rate = Number(courseConfig?.[s.course]?.rate || 0);
-    return acc + rate;
-  }, 0);
+      if (!s.archived && s.reported_month === null && (s.student_type === 'New' || (s.student_type === 'Continuing' && s.pending_renewal_fee === true))) {
+        unreported.push(s);
+      }
 
-  // Quick list of urgent actions
-  const urgentExpiries = [...expiringSoonStudents, ...expiredStudents]
-    .sort((a, b) => getDaysRemaining(a.end_date, referenceDate) - getDaysRemaining(b.end_date, referenceDate))
-    .slice(0, 5);
+      if (s.group) {
+        groups[s.group] = (groups[s.group] || 0) + 1;
+      }
+      if (s.course && courses[s.course] !== undefined) {
+        courses[s.course]++;
+      }
+    }
+
+    const totalEnroll = Object.values(courses).reduce((a, b) => a + b, 0);
+
+    const estPayroll = unreported.reduce((acc, s) => {
+      const rate = Number(courseConfig?.[s.course]?.rate || 0);
+      return acc + rate;
+    }, 0);
+
+    const urgent = [...expiringSoon, ...expired]
+      .sort((a, b) => getDaysRemaining(a.end_date, referenceDate) - getDaysRemaining(b.end_date, referenceDate))
+      .slice(0, 5);
+
+    return {
+      activeStudents: active,
+      expiringSoonStudents: expiringSoon,
+      expiredStudents: expired,
+      examReadyStudents: examReady,
+      unreportedStudents: unreported,
+      groupCounts: groups,
+      courseCounts: courses,
+      totalEnrollments: totalEnroll,
+      estimatedPayroll: estPayroll,
+      urgentExpiries: urgent
+    };
+  }, [students, referenceDate, courseConfig]);
 
   return (
     <div className="space-y-6">
@@ -462,3 +498,5 @@ export default function Dashboard({ students, referenceDate, onSelectStudent, on
     </div>
   );
 }
+
+export default memo(Dashboard);

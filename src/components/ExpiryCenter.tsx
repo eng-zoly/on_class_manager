@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Student } from '../types';
 import { getStudentStatus, getDaysRemaining, generateTelegramReminder, formatReadableDate, getTelegramLink } from '../utils/studentUtils';
@@ -12,7 +12,7 @@ interface ExpiryCenterProps {
   onSelectStudent: (student: Student) => void;
 }
 
-export default function ExpiryCenter({
+function ExpiryCenter({
   students,
   referenceDate,
   onRenewStudent,
@@ -798,3 +798,5 @@ export default function ExpiryCenter({
     </div>
   );
 }
+
+export default memo(ExpiryCenter);

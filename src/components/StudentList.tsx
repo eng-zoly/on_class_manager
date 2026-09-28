@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Student, CourseType, StudentType, ExamResult, StudentStatus } from '../types';
 import { getStudentStatus, getDaysRemaining, getSubjectProgress, formatReadableDate, getTelegramLink, isStudentExamEligible } from '../utils/studentUtils';
@@ -20,7 +20,7 @@ interface StudentListProps {
 type SortField = 'student_id' | 'full_name' | 'end_date' | 'progress';
 type SortOrder = 'asc' | 'desc';
 
-export default function StudentList({
+function StudentList({
   students,
   referenceDate,
   onSelectStudent,
@@ -85,6 +85,36 @@ export default function StudentList({
       (s.exam_result as string) === 'Done';
   };
 
+  // Precomputed student name counts for O(1) multi-course lookup
+  const studentNameCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const s of students) {
+      if (!s.archived && s.full_name) {
+        const key = s.full_name.trim().toLowerCase();
+        counts.set(key, (counts.get(key) || 0) + 1);
+      }
+    }
+    return counts;
+  }, [students]);
+
+  // Precomputed student exercise progress cache
+  const studentProgressMap = useMemo(() => {
+    const map = new Map<string, { pct: number; done: number; total: number }>();
+    for (const s of students) {
+      let total = 0;
+      let done = 0;
+      for (const cl of s.checklists) {
+        total += cl.items.length;
+        for (const i of cl.items) {
+          if (i.completed) done++;
+        }
+      }
+      const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+      map.set(s.student_id, { pct, done, total });
+    }
+    return map;
+  }, [students]);
+
   // Count exam ready students
   const examReadyCount = useMemo(() => {
     return students.filter(s => !s.dropout && isStudentExamEligible(s, courseConfig)).length;
@@ -103,6 +133,37 @@ export default function StudentList({
     });
     return Array.from(groups).sort();
   }, [students]);
+
+  // Precomputed counts per group for the filter bar
+  const { groupCountsMap, totalGroupCount } = useMemo(() => {
+    const map = new Map<string, number>();
+    let total = 0;
+    for (const s of students) {
+      const isExamReady = isStudentExamEligible(s, courseConfig);
+      const isCompleted = isExamCompleted(s);
+
+      const matchesStatus = statusFilter === 'all' 
+        ? !s.dropout 
+        : statusFilter === 'Dropout' 
+        ? !!s.dropout 
+        : statusFilter === 'ExamReady' 
+        ? isExamReady && !s.dropout 
+        : statusFilter === 'CompletedExams' 
+        ? isCompleted && !s.dropout 
+        : getStudentStatus(s.end_date, referenceDate, s.exam_result) === statusFilter && !s.dropout;
+
+      const matchesExamReady = !(hideExamReady && isExamReady && statusFilter !== 'ExamReady');
+      const matchesCompletedExams = !(hideCompletedExams && isCompleted && statusFilter !== 'CompletedExams');
+
+      if (matchesStatus && matchesExamReady && matchesCompletedExams) {
+        total++;
+        if (s.group) {
+          map.set(s.group, (map.get(s.group) || 0) + 1);
+        }
+      }
+    }
+    return { groupCountsMap: map, totalGroupCount: total };
+  }, [students, statusFilter, hideExamReady, hideCompletedExams, courseConfig, referenceDate]);
 
   // Specific list of students dynamically chosen for printing based on chosen group
   const printableStudents = useMemo(() => {
@@ -219,26 +280,17 @@ export default function StudentList({
         let valueA: any = a[sortField];
         let valueB: any = b[sortField];
 
-        // Progress custom calculation
+        // Progress lookup in O(1) from precomputed map
         if (sortField === 'progress') {
-          const calcProgress = (stud: Student) => {
-            let totalItems = 0;
-            let completedItems = 0;
-            stud.checklists.forEach(cl => {
-              totalItems += cl.items.length;
-              completedItems += cl.items.filter(i => i.completed).length;
-            });
-            return totalItems > 0 ? completedItems / totalItems : 0;
-          };
-          valueA = calcProgress(a);
-          valueB = calcProgress(b);
+          valueA = studentProgressMap.get(a.student_id)?.pct || 0;
+          valueB = studentProgressMap.get(b.student_id)?.pct || 0;
         }
 
         if (valueA < valueB) return sortOrder === 'asc' ? -1 : 1;
         if (valueA > valueB) return sortOrder === 'asc' ? 1 : -1;
         return 0;
       });
-  }, [students, searchTerm, courseFilter, typeFilter, statusFilter, groupFilter, sortField, sortOrder, referenceDate, hideExamReady, courseConfig]);
+  }, [students, searchTerm, courseFilter, typeFilter, statusFilter, groupFilter, sortField, sortOrder, referenceDate, hideExamReady, hideCompletedExams, courseConfig, studentProgressMap]);
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/65 shadow-xs overflow-hidden">
@@ -351,7 +403,7 @@ export default function StudentList({
               }`}
               title="ចុចដើម្បីប្តូរការលាក់/បង្ហាញសិស្សដែលគ្រប់លក្ខខណ្ឌប្រឡង"
             >
-              <span className={`h-2 w-2 rounded-full ${hideExamReady ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
+              <span className={`h-2 w-2 rounded-full ${hideExamReady ? 'bg-amber-500' : 'bg-emerald-500'}`} />
               <span>
                 {hideExamReady ? `លាក់សិស្សគ្រប់លក្ខខណ្ឌ (Hidden: ${examReadyCount})` : `បង្ហាញសិស្សគ្រប់លក្ខខណ្ឌ (${examReadyCount})`}
               </span>
@@ -368,7 +420,7 @@ export default function StudentList({
               }`}
               title="ចុចដើម្បីប្តូរការលាក់/បង្ហាញសិស្សដែលបានប្រឡងរួចរាល់"
             >
-              <span className={`h-2 w-2 rounded-full ${hideCompletedExams ? 'bg-blue-500 animate-pulse' : 'bg-indigo-500'}`} />
+              <span className={`h-2 w-2 rounded-full ${hideCompletedExams ? 'bg-blue-500' : 'bg-indigo-500'}`} />
               <span>
                 {hideCompletedExams ? `លាក់សិស្សប្រឡងរួច (Hidden: ${completedExamsCount})` : `បង្ហាញសិស្សប្រឡងរួច (${completedExamsCount})`}
               </span>
@@ -390,19 +442,10 @@ export default function StudentList({
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80'
                 }`}
               >
-                ទាំងអស់ ({students.filter(s => 
-                  (statusFilter === 'Dropout' ? !!s.dropout : !s.dropout) && 
-                  !(hideExamReady && isStudentExamEligible(s, courseConfig) && statusFilter !== 'ExamReady') &&
-                  !(hideCompletedExams && isExamCompleted(s) && statusFilter !== 'CompletedExams')
-                ).length})
+                ទាំងអស់ ({totalGroupCount})
               </button>
               {uniqueGroups.map(grp => {
-                const grpCount = students.filter(s => 
-                  s.group === grp && 
-                  (statusFilter === 'Dropout' ? !!s.dropout : !s.dropout) && 
-                  !(hideExamReady && isStudentExamEligible(s, courseConfig) && statusFilter !== 'ExamReady') &&
-                  !(hideCompletedExams && isExamCompleted(s) && statusFilter !== 'CompletedExams')
-                ).length;
+                const grpCount = groupCountsMap.get(grp) || 0;
                 return (
                   <button
                     key={grp}
@@ -492,14 +535,11 @@ export default function StudentList({
                 const status = getStudentStatus(student.end_date, referenceDate, student.exam_result);
                 const days = getDaysRemaining(student.end_date, referenceDate);
 
-                // Cumulative exercises calculations
-                let totalEx = 0;
-                let doneEx = 0;
-                student.checklists.forEach(cl => {
-                  totalEx += cl.items.length;
-                  doneEx += cl.items.filter(i => i.completed).length;
-                });
-                const progressPct = totalEx > 0 ? Math.round((doneEx / totalEx) * 100) : 0;
+                // O(1) progress metrics from precomputed cache
+                const prog = studentProgressMap.get(student.student_id) || { total: 0, done: 0, pct: 0 };
+                const totalEx = prog.total;
+                const doneEx = prog.done;
+                const progressPct = prog.pct;
 
                 return (
                   <tr 
@@ -523,9 +563,7 @@ export default function StudentList({
                           </span>
                         )}
                         {(() => {
-                          const multiCourseCount = students.filter(
-                            s => !s.archived && s.full_name.trim().toLowerCase() === student.full_name.trim().toLowerCase()
-                          ).length;
+                          const multiCourseCount = studentNameCounts.get(student.full_name.trim().toLowerCase()) || 0;
                           return multiCourseCount > 1 ? (
                             <span 
                               className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 text-violet-800 border border-violet-200 shadow-2xs"
@@ -549,7 +587,7 @@ export default function StudentList({
                       {student.contact && (
                         <div className="text-xs text-gray-400 flex items-center mt-1 gap-1.5 flex-wrap">
                           <span className="flex items-center">
-                            <Phone className="h-3 w-3 mr-1 text-gray-300 animate-pulse" />
+                            <Phone className="h-3 w-3 mr-1 text-gray-300" />
                             {student.contact}
                           </span>
                           {getTelegramLink(student.contact, student.telegram_name) && (
@@ -1107,3 +1145,5 @@ export default function StudentList({
     </div>
   );
 }
+
+export default memo(StudentList);

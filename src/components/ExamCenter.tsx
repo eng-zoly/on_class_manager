@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Student, ExamResult } from '../types';
 import { isStudentExamEligible, formatReadableDate } from '../utils/studentUtils';
@@ -37,18 +37,22 @@ interface ExamCenterProps {
   courseConfig: any;
 }
 
-export default function ExamCenter({
+function ExamCenter({
   students,
   referenceDate,
   onRecordExamResult,
   onSelectStudent,
   courseConfig
 }: ExamCenterProps) {
-  // Filter students who are ready for the exam
-  const examReadyStudents = students.filter(s => isStudentExamEligible(s, courseConfig));
+  // Filter students who are ready for the exam (memoized)
+  const examReadyStudents = useMemo(() => {
+    return students.filter(s => isStudentExamEligible(s, courseConfig));
+  }, [students, courseConfig]);
 
-  // Filter students who have already taken the exam in past (Pass, Fail, Absent)
-  const pastExamTakers = students.filter(s => s.exam_result !== 'Not Yet' && s.exam_date !== null);
+  // Filter students who have already taken the exam in past (Pass, Fail, Absent) (memoized)
+  const pastExamTakers = useMemo(() => {
+    return students.filter(s => s.exam_result !== 'Not Yet' && s.exam_date !== null);
+  }, [students]);
 
   // Recording State
   const [gradingStudent, setGradingStudent] = useState<Student | null>(null);
@@ -872,3 +876,5 @@ export default function ExamCenter({
     </div>
   );
 }
+
+export default memo(ExamCenter);

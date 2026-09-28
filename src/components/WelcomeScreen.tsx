@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, memo } from 'react';
 import { motion } from 'motion/react';
 import { Student } from '../types';
 import { getStudentStatus, isStudentExamEligible } from '../utils/studentUtils';
@@ -30,7 +30,7 @@ interface WelcomeScreenProps {
   onTabChange: (tab: string) => void;
 }
 
-export default function WelcomeScreen({
+function WelcomeScreen({
   students,
   referenceDate,
   onEnterDashboard,
@@ -47,11 +47,21 @@ export default function WelcomeScreen({
     localStorage.setItem('show_welcome_on_startup', String(val));
   };
 
-  // Calculations
-  const nonArchived = students.filter(s => !s.archived && !s.dropout);
-  const activeStudents = nonArchived.filter(s => getStudentStatus(s.end_date, referenceDate, s.exam_result) === 'Active');
-  const expiringSoon = nonArchived.filter(s => getStudentStatus(s.end_date, referenceDate, s.exam_result) === 'Expiring Soon');
-  const examReady = nonArchived.filter(s => isStudentExamEligible(s));
+  // Calculations in a single pass
+  const { activeStudents, expiringSoon, examReady } = useMemo(() => {
+    let act = 0;
+    let exp = 0;
+    let exam = 0;
+    for (const s of students) {
+      if (!s.archived && !s.dropout) {
+        const status = getStudentStatus(s.end_date, referenceDate, s.exam_result);
+        if (status === 'Active') act++;
+        else if (status === 'Expiring Soon') exp++;
+        if (isStudentExamEligible(s)) exam++;
+      }
+    }
+    return { activeStudents: act, expiringSoon: exp, examReady: exam };
+  }, [students, referenceDate]);
 
   // Khmer Greeting based on hour
   const getGreeting = () => {
@@ -301,3 +311,5 @@ export default function WelcomeScreen({
     </div>
   );
 }
+
+export default memo(WelcomeScreen);
