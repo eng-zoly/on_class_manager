@@ -93,6 +93,21 @@ function GradingPanel({
     return students.find(s => s.student_id === selectedStudentId) || null;
   }, [students, selectedStudentId]);
 
+  const handlePrintGrading = () => {
+    document.body.classList.add('print-grading');
+    if (window.self !== window.top) {
+      setShowPrintIframeWarning(true);
+    } else {
+      const studentName = currentStudent?.full_name || 'សិស្ស';
+      const formattedDate = formatDateForFilename(new Date());
+      const pdfTitle = `របាយការណ៍វាយតម្លៃ_${sanitizeFilename(studentName)}_${formattedDate}`;
+      triggerPrintWithDynamicTitle(pdfTitle);
+    }
+    setTimeout(() => {
+      document.body.classList.remove('print-grading');
+    }, 1000);
+  };
+
   // Automatically select the first student in active list if no student is selected or selected student is invalid
   React.useEffect(() => {
     if (activeStudents.length > 0) {

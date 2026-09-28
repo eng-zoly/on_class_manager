@@ -48,19 +48,23 @@ function WelcomeScreen({
   };
 
   // Calculations in a single pass
-  const { activeStudents, expiringSoon, examReady } = useMemo(() => {
+  const { totalCount, activeStudents, expiringSoon, examReady } = useMemo(() => {
+    let tot = 0;
     let act = 0;
     let exp = 0;
     let exam = 0;
     for (const s of students) {
-      if (!s.archived && !s.dropout) {
-        const status = getStudentStatus(s.end_date, referenceDate, s.exam_result);
-        if (status === 'Active') act++;
-        else if (status === 'Expiring Soon') exp++;
-        if (isStudentExamEligible(s)) exam++;
+      if (!s.archived) {
+        tot++;
+        if (!s.dropout) {
+          const status = getStudentStatus(s.end_date, referenceDate, s.exam_result);
+          if (status === 'Active') act++;
+          else if (status === 'Expiring Soon') exp++;
+          if (isStudentExamEligible(s)) exam++;
+        }
       }
     }
-    return { activeStudents: act, expiringSoon: exp, examReady: exam };
+    return { totalCount: tot, activeStudents: act, expiringSoon: exp, examReady: exam };
   }, [students, referenceDate]);
 
   // Khmer Greeting based on hour
@@ -163,7 +167,7 @@ function WelcomeScreen({
               <Users className="h-5 w-5" />
             </div>
           </div>
-          <p className="text-3xl font-black text-slate-900 mt-2">{nonArchived.length}</p>
+          <p className="text-3xl font-black text-slate-900 mt-2">{totalCount}</p>
           <span className="text-[10px] text-slate-400 mt-1 block">បញ្ជីឈ្មោះសិស្សក្នុងប្រព័ន្ធ</span>
         </div>
 
@@ -177,7 +181,7 @@ function WelcomeScreen({
               <Flame className="h-5 w-5" />
             </div>
           </div>
-          <p className="text-3xl font-black text-slate-900 mt-2">{activeStudents.length}</p>
+          <p className="text-3xl font-black text-slate-900 mt-2">{activeStudents}</p>
           <span className="text-[10px] text-emerald-600 font-semibold mt-1 block">កំពុងសិក្សាទៀងទាត់</span>
         </div>
 
@@ -191,7 +195,7 @@ function WelcomeScreen({
               <Clock className="h-5 w-5" />
             </div>
           </div>
-          <p className="text-3xl font-black text-slate-900 mt-2">{expiringSoon.length}</p>
+          <p className="text-3xl font-black text-slate-900 mt-2">{expiringSoon}</p>
           <span className="text-[10px] text-amber-600 font-semibold mt-1 block">រយៈពេល ៧ ថ្ងៃចុងក្រោយ</span>
         </div>
 
@@ -205,7 +209,7 @@ function WelcomeScreen({
               <Award className="h-5 w-5" />
             </div>
           </div>
-          <p className="text-3xl font-black text-slate-900 mt-2">{examReady.length}</p>
+          <p className="text-3xl font-black text-slate-900 mt-2">{examReady}</p>
           <span className="text-[10px] text-violet-600 font-semibold mt-1 block">បំពេញគ្រប់លំហាត់រួចរាល់</span>
         </div>
       </motion.div>

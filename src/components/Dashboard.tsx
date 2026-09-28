@@ -262,9 +262,10 @@ function Dashboard({ students, referenceDate, onSelectStudent, onTabChange, cour
               <p className="text-sm text-gray-500 text-center py-8">មិនទាន់មានក្រុមសិក្សា</p>
             ) : (
               Object.entries(groupCounts)
-                .sort((a, b) => b[1] - a[1])
+                .sort((a, b) => Number(b[1]) - Number(a[1]))
                 .map(([groupName, count]) => {
-                  const percentage = Math.round((count / students.length) * 100);
+                  const numCount = Number(count);
+                  const percentage = students.length > 0 ? Math.round((numCount / students.length) * 100) : 0;
                   return (
                     <div key={groupName} className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-100 hover:bg-slate-100 transition-colors">
                       <div className="flex items-center space-x-2">
@@ -272,7 +273,7 @@ function Dashboard({ students, referenceDate, onSelectStudent, onTabChange, cour
                         <span className="text-sm font-medium text-gray-800 truncate max-w-[150px]">{groupName}</span>
                       </div>
                       <div className="flex items-center space-x-3">
-                        <span className="text-xs text-gray-500">{count} សិស្ស ({percentage}%)</span>
+                        <span className="text-xs text-gray-500">{numCount} សិស្ស ({percentage}%)</span>
                         <ChevronRight className="h-4 w-4 text-gray-400" />
                       </div>
                     </div>

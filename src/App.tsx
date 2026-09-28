@@ -1,24 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-
-// Cached AudioContext singleton to prevent audio hardware pipeline blocking on UI thread
-let cachedAudioCtx: AudioContext | null = null;
-function getSharedAudioContext(): AudioContext | null {
-  try {
-    if (!cachedAudioCtx) {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (AudioCtx) {
-        cachedAudioCtx = new AudioCtx();
-      }
-    }
-    if (cachedAudioCtx && cachedAudioCtx.state === 'suspended') {
-      cachedAudioCtx.resume().catch(() => {});
-    }
-    return cachedAudioCtx;
-  } catch {
-    return null;
-  }
-}
 import { Student, PayrollReport, CourseType, SubjectChecklist, COURSE_CONFIG, ExamResult, AppNotification, NotificationSettings } from './types';
 import { INITIAL_STUDENTS, INITIAL_PAYROLL_REPORTS } from './data/demoData';
 import { generateNextStudentId, getStudentStatus, isStudentExamEligible } from './utils/studentUtils';
@@ -94,8 +75,28 @@ import {
   KeyRound,
   Sun,
   Moon,
-  Laptop
+  Laptop,
+  RefreshCw
 } from 'lucide-react';
+
+// Cached AudioContext singleton to prevent audio hardware pipeline blocking on UI thread
+let cachedAudioCtx: AudioContext | null = null;
+function getSharedAudioContext(): AudioContext | null {
+  try {
+    if (!cachedAudioCtx) {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        cachedAudioCtx = new AudioCtx();
+      }
+    }
+    if (cachedAudioCtx && cachedAudioCtx.state === 'suspended') {
+      cachedAudioCtx.resume().catch(() => {});
+    }
+    return cachedAudioCtx;
+  } catch {
+    return null;
+  }
+}
 
 const DEFAULT_SETTINGS: NotificationSettings = {
   enableToasts: true,

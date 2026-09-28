@@ -62,16 +62,21 @@ export function getSubjectProgress(checklist: Student['checklists'][0]) {
  */
 export function isStudentExamEligible(student: Student, courseConfig?: any): boolean {
   // If student dropped out or exam has already been taken, they are not eligible
-  if (student.dropout || student.exam_result !== 'Not Yet') {
+  if (!student || student.dropout || student.exam_result !== 'Not Yet') {
     return false;
   }
 
-  // Get subjects required for their course
-  const requiredSubjects = (courseConfig || COURSE_CONFIG)[student.course]?.subjects || [];
+  // Use configured course settings if non-empty, otherwise fallback to default COURSE_CONFIG
+  const activeConfig = (courseConfig && Object.keys(courseConfig).length > 0) ? courseConfig : COURSE_CONFIG;
+  const courseInfo = activeConfig[student.course] || COURSE_CONFIG[student.course];
+  const requiredSubjects = courseInfo?.subjects || [];
   
+  if (requiredSubjects.length === 0) return false;
+  if (!Array.isArray(student.checklists)) return false;
+
   // Check if every required subject's status is 'Complete'
   for (const subName of requiredSubjects) {
-    const checklist = student.checklists.find(c => c.subject === subName);
+    const checklist = student.checklists.find(c => c && c.subject === subName);
     if (!checklist) return false;
     
     const progress = getSubjectProgress(checklist);

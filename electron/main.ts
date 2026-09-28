@@ -54,6 +54,10 @@ function createWindow() {
     mainWindow?.focus();
   });
 
+  mainWindow.webContents.on('did-fail-load', (_e, errorCode, errorDescription) => {
+    console.error('MainWindow failed to load index:', errorCode, errorDescription);
+  });
+
   // Open external links in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -145,7 +149,8 @@ function buildMenu() {
         { role: 'zoomOut' },
         { type: 'separator' },
         { role: 'togglefullscreen' },
-        ...(isDev ? [{ type: 'separator' as const }, { role: 'toggleDevTools' as const }] : []),
+        { type: 'separator' },
+        { role: 'toggleDevTools' },
       ],
     },
 

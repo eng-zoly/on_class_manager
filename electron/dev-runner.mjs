@@ -6,7 +6,7 @@
  */
 
 import { spawn } from 'child_process';
-import { createServer } from 'net';
+import { createServer, Socket } from 'net';
 
 const VITE_PORT = 5173;
 const MAX_WAIT_MS = 30_000;
@@ -25,7 +25,7 @@ function waitForPort(port, timeout) {
         }
       });
       // Actually try to connect, not create server
-      const client = new (await import('net')).Socket();
+      const client = new Socket();
       client.connect(port, '127.0.0.1', () => {
         client.destroy();
         resolve();
@@ -56,7 +56,6 @@ async function main() {
   // Simple port poll
   const start = Date.now();
   await new Promise((resolve, reject) => {
-    const { Socket } = await import('net');
     const poll = () => {
       const s = new Socket();
       s.setTimeout(500);
