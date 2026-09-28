@@ -21,9 +21,19 @@ import {
   RefreshCw,
   AlertTriangle,
   CheckCircle2,
-  ExternalLink
+  ExternalLink,
+  Loader2,
+  FolderOpen
 } from 'lucide-react';
-import { checkForAppUpdates, getUpdateConfig, saveUpdateConfig, AppReleaseInfo, APP_VERSION } from '../services/updateService';
+import { 
+  checkForAppUpdates, 
+  getUpdateConfig, 
+  saveUpdateConfig, 
+  AppReleaseInfo, 
+  APP_VERSION,
+  formatBytes,
+  formatSpeed
+} from '../services/updateService';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
@@ -66,9 +76,18 @@ export default function SettingsModal({
   const [repoOwnerInput, setRepoOwnerInput] = useState(repoConfig.owner);
   const [repoNameInput, setRepoNameInput] = useState(repoConfig.repo);
 
+  // In-App Download State
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState({ percent: 0, transferred: 0, total: 0, speed: 0 });
+  const [downloadComplete, setDownloadComplete] = useState(false);
+  const [downloadedFilePath, setDownloadedFilePath] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
   const handleCheckUpdate = async () => {
     setIsCheckingUpdate(true);
     setUpdateError(null);
+    setDownloadComplete(false);
+    setDownloadError(null);
     try {
       const result = await checkForAppUpdates(APP_VERSION);
       setUpdateInfo(result);
@@ -76,6 +95,50 @@ export default function SettingsModal({
       setUpdateError(err.message || 'បរាជ័យក្នុងការពិនិត្យមើលការអាប់ដេត');
     } finally {
       setIsCheckingUpdate(false);
+    }
+  };
+
+  const handleDownloadAndInstall = async () => {
+    if (!updateInfo) return;
+
+    if (!window.electronAPI?.downloadAndOpenUpdate) {
+      // Fallback for browser environment
+      window.open(updateInfo.downloadUrl, '_blank');
+      return;
+    }
+
+    setIsDownloading(true);
+    setDownloadError(null);
+    setDownloadComplete(false);
+    setDownloadProgress({ percent: 0, transferred: 0, total: updateInfo.assetSize || 0, speed: 0 });
+
+    const removeListener = window.electronAPI.onUpdateDownloadProgress((progress) => {
+      setDownloadProgress(progress);
+    });
+
+    try {
+      const result = await window.electronAPI.downloadAndOpenUpdate({
+        url: updateInfo.downloadUrl,
+        fileName: updateInfo.assetName
+      });
+
+      if (result.success) {
+        setDownloadComplete(true);
+        setDownloadedFilePath(result.filePath || null);
+      } else {
+        setDownloadError(result.error || 'បរាជ័យក្នុងការទាញយកឯកសារអាប់ដេត');
+      }
+    } catch (err: any) {
+      setDownloadError(err.message || 'បរាជ័យក្នុងការទាញយកឯកសារអាប់ដេត');
+    } finally {
+      removeListener();
+      setIsDownloading(false);
+    }
+  };
+
+  const handleReopenInstaller = async () => {
+    if (downloadedFilePath && window.electronAPI?.openFilePath) {
+      await window.electronAPI.openFilePath(downloadedFilePath);
     }
   };
 
@@ -484,27 +547,107 @@ export default function SettingsModal({
                         {updateInfo.releaseNotes}
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-3 pt-1">
-                        <a
-                          href={updateInfo.downloadUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex-1 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer hover:scale-102 active:scale-98"
-                        >
-                          <Download className="h-4 w-4" />
-                          <span>ទាញយកកំណែថ្មី ({updateInfo.assetName})</span>
-                        </a>
+                      {/* Download & Auto-Open Section */}
+                      {isDownloading ? (
+                        <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 space-y-3">
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2 font-bold text-indigo-950 dark:text-indigo-200">
+                              <Loader2 className="h-4 w-4 animate-spin text-indigo-600 dark:text-indigo-400" />
+                              <span>កំពុងទាញយកឯកសារដំឡើង...</span>
+                            </div>
+                            <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400 text-sm">
+                              {downloadProgress.percent}%
+                            </span>
+                          </div>
 
-                        <a
-                          href={updateInfo.htmlUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="py-2.5 px-3 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                          <span>មើលលើ GitHub</span>
-                        </a>
-                      </div>
+                          {/* Progress Bar */}
+                          <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-3 overflow-hidden p-0.5 border border-slate-200 dark:border-slate-700">
+                            <div 
+                              className="bg-gradient-to-r from-indigo-500 via-violet-500 to-indigo-600 h-full rounded-full transition-all duration-300 relative overflow-hidden"
+                              style={{ width: `${Math.max(3, downloadProgress.percent)}%` }}
+                            >
+                              <div className="absolute inset-0 bg-white/20 animate-pulse" />
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                            <span>
+                              {formatBytes(downloadProgress.transferred)} / {formatBytes(downloadProgress.total || updateInfo.assetSize || 0)}
+                            </span>
+                            <span>{formatSpeed(downloadProgress.speed)}</span>
+                          </div>
+
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
+                            💡 នៅពេលទាញយករួចរាល់ កម្មវិធីនឹងបើកផ្ទាំងដំឡើង ({updateInfo.assetName}) ឡើងលើអេក្រង់ដោយស្វ័យប្រវត្តិតែម្ដង។
+                          </p>
+                        </div>
+                      ) : downloadComplete ? (
+                        <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 space-y-3">
+                          <div className="flex items-start gap-3">
+                            <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+                            <div className="space-y-1">
+                              <h6 className="text-xs font-bold text-emerald-950 dark:text-emerald-200">
+                                ទាញយករួចរាល់ជាស្ថាពរ! 🎉
+                              </h6>
+                              <p className="text-[11px] text-emerald-800 dark:text-emerald-300 leading-relaxed">
+                                ផ្ទាំងដំឡើង (DMG) ត្រូវបានបើកឡើងលើអេក្រង់ដោយស្វ័យប្រវត្តិ។ សូមអូស <strong>ClassManager</strong> ចូលទៅកាន់ <strong>Applications</strong> folder រួចចុច <strong>Replace</strong> ជាការស្រេច។
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={handleReopenInstaller}
+                              className="py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm hover:scale-[1.01] active:scale-[0.99]"
+                            >
+                              <FolderOpen className="h-3.5 w-3.5" />
+                              <span>បើកផ្ទាំងដំឡើងម្ដងទៀត (Re-open)</span>
+                            </button>
+
+                            <a
+                              href={updateInfo.htmlUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="py-2 px-3 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              <span>មើលលើ GitHub</span>
+                            </a>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {downloadError && (
+                            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs text-rose-700 dark:text-rose-300 flex items-center gap-2">
+                              <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500" />
+                              <span>{downloadError}</span>
+                            </div>
+                          )}
+
+                          <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                            <button
+                              type="button"
+                              onClick={handleDownloadAndInstall}
+                              className="flex-1 py-3 px-4 bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-500/25 flex items-center justify-center gap-2 cursor-pointer hover:scale-[1.01] active:scale-[0.99]"
+                            >
+                              <Download className="h-4 w-4" />
+                              <span>ទាញយក និងដំឡើងផ្ទាល់ក្នុងកម្មវិធី ({formatBytes(updateInfo.assetSize || 0)})</span>
+                            </button>
+
+                            <a
+                              href={updateInfo.htmlUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="py-3 px-3.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+                              title="មើល Release Notes លើ GitHub"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              <span>GitHub</span>
+                            </a>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 

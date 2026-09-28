@@ -40,6 +40,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
     options: Electron.OpenDialogOptions
   ): Promise<Electron.OpenDialogReturnValue> =>
     ipcRenderer.invoke('show-open-dialog', options),
+
+  // ── Auto Update In-App ────────────────────────────────
+  downloadAndOpenUpdate: (
+    options: { url: string; fileName: string }
+  ): Promise<{ success: boolean; filePath?: string; error?: string }> =>
+    ipcRenderer.invoke('download-and-open-update', options),
+
+  onUpdateDownloadProgress: (
+    callback: (data: { percent: number; transferred: number; total: number; speed: number }) => void
+  ) => {
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on('update-download-progress', handler);
+    return () => {
+      ipcRenderer.removeListener('update-download-progress', handler);
+    };
+  },
+
+  openFilePath: (filePath: string): Promise<string> =>
+    ipcRenderer.invoke('open-file-path', filePath),
 });
 
 // ── Type declarations for TypeScript ──────────────────────────

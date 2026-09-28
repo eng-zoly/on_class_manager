@@ -1,6 +1,9 @@
 import { app, BrowserWindow, shell, ipcMain, dialog, Menu } from 'electron';
 import { join } from 'path';
-import { existsSync } from 'fs';
+import { existsSync, createWriteStream, unlinkSync } from 'fs';
+import { get as httpsGet } from 'https';
+import { get as httpGet } from 'http';
+import { URL } from 'url';
 
 // ─── Constants ────────────────────────────────────────────────
 const isDev = !app.isPackaged;
@@ -192,6 +195,124 @@ ipcMain.handle('get-app-version', () => app.getVersion());
 
 // Get platform
 ipcMain.handle('get-platform', () => process.platform);
+
+// ─── Direct In-App Update Downloader ──────────────────────────
+function downloadFileWithProgress(
+  urlStr: string,
+  destPath: string,
+  onProgress: (data: { percent: number; transferred: number; total: number; speed: number }) => void,
+  maxRedirects = 5
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (maxRedirects < 0) {
+      return reject(new Error('Too many redirects while downloading update'));
+    }
+
+    const parsedUrl = new URL(urlStr);
+    const getFn = parsedUrl.protocol === 'http:' ? httpGet : httpsGet;
+
+    const req = getFn(
+      urlStr,
+      {
+        headers: {
+          'User-Agent': 'ClassManager-Desktop-App',
+          'Accept': 'application/octet-stream, application/vnd.github+json, */*',
+        },
+      },
+      (res) => {
+        // Follow HTTP Redirects (GitHub Release 302 -> AWS S3)
+        if (
+          res.statusCode &&
+          [301, 302, 303, 307, 308].includes(res.statusCode) &&
+          res.headers.location
+        ) {
+          res.resume();
+          return resolve(
+            downloadFileWithProgress(res.headers.location, destPath, onProgress, maxRedirects - 1)
+          );
+        }
+
+        if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+          res.resume();
+          return reject(new Error(`Download failed with HTTP ${res.statusCode}`));
+        }
+
+        const total = parseInt(res.headers['content-length'] || '0', 10);
+        let transferred = 0;
+        let lastTime = Date.now();
+        let lastTransferred = 0;
+        let speed = 0;
+
+        const fileStream = createWriteStream(destPath);
+
+        res.on('data', (chunk: Buffer) => {
+          transferred += chunk.length;
+          const now = Date.now();
+          if (now - lastTime >= 250) {
+            speed = Math.round(((transferred - lastTransferred) / (now - lastTime)) * 1000);
+            lastTime = now;
+            lastTransferred = transferred;
+            const percent = total > 0 ? Math.min(100, Math.round((transferred / total) * 100)) : 0;
+            onProgress({ percent, transferred, total, speed });
+          }
+        });
+
+        res.pipe(fileStream);
+
+        fileStream.on('finish', () => {
+          fileStream.close(() => {
+            onProgress({ percent: 100, transferred, total: total || transferred, speed: 0 });
+            resolve(destPath);
+          });
+        });
+
+        fileStream.on('error', (err) => {
+          if (existsSync(destPath)) {
+            try { unlinkSync(destPath); } catch {}
+          }
+          reject(err);
+        });
+
+        res.on('error', (err) => {
+          if (existsSync(destPath)) {
+            try { unlinkSync(destPath); } catch {}
+          }
+          reject(err);
+        });
+      }
+    );
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+  });
+}
+
+// Handle In-App Update Download & Auto-Open
+ipcMain.handle('download-and-open-update', async (event, { url, fileName }: { url: string; fileName: string }) => {
+  try {
+    const downloadsFolder = app.getPath('downloads');
+    const targetFile = join(downloadsFolder, fileName);
+
+    await downloadFileWithProgress(url, targetFile, (progressData) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('update-download-progress', progressData);
+      }
+    });
+
+    // Automatically open the downloaded installer (e.g. mounts DMG on Mac or executes EXE on Win)
+    await shell.openPath(targetFile);
+
+    return { success: true, filePath: targetFile };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'បរាជ័យក្នុងការទាញយក' };
+  }
+});
+
+// Open file path in OS
+ipcMain.handle('open-file-path', async (_event, filePath: string) => {
+  return shell.openPath(filePath);
+});
 
 // ─── App Lifecycle ────────────────────────────────────────────
 app.whenReady().then(() => {
