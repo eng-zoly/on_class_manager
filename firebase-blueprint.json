@@ -1,0 +1,96 @@
+{
+  "entities": {
+    "student": {
+      "title": "Student",
+      "description": "Student record in the class management system",
+      "type": "object",
+      "properties": {
+        "student_id": { "type": "string" },
+        "full_name": { "type": "string" },
+        "gender": { "type": "string" },
+        "student_type": { "type": "string" },
+        "receipt_number": { "type": "string" },
+        "course": { "type": "string" },
+        "start_date": { "type": "string" },
+        "end_date": { "type": "string" },
+        "group": { "type": "string" },
+        "contact": { "type": "string" },
+        "telegram_name": { "type": "string" },
+        "reported_month": { "type": "string" },
+        "exam_date": { "type": "string" },
+        "exam_result": { "type": "string" },
+        "notes": { "type": "string" },
+        "checklists": { "type": "array" },
+        "archived": { "type": "boolean" },
+        "dropout": { "type": "boolean" },
+        "pending_renewal_fee": { "type": "boolean" },
+        "exam_score_word": { "type": "number" },
+        "exam_score_excel": { "type": "number" },
+        "exam_score_powerpoint": { "type": "number" },
+        "exam_score_total": { "type": "number" }
+      },
+      "required": ["student_id", "full_name"]
+    },
+    "payrollReport": {
+      "title": "Payroll Report",
+      "description": "Monthly payroll settlement report",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "report_month": { "type": "string" },
+        "generated_date": { "type": "string" },
+        "student_count_office": { "type": "number" },
+        "student_count_advanced": { "type": "number" },
+        "rate_office": { "type": "number" },
+        "rate_advanced": { "type": "number" },
+        "total_payment": { "type": "number" },
+        "students": { "type": "array" }
+      },
+      "required": ["id", "report_month"]
+    },
+    "appSettings": {
+      "title": "App Settings",
+      "description": "Global application state and configurations",
+      "type": "object",
+      "properties": {
+        "referenceDate": { "type": "string" },
+        "courseConfig": { "type": "object" },
+        "notifications": { "type": "array" },
+        "notificationSettings": { "type": "object" }
+      }
+    },
+    "user": {
+      "title": "User Profile",
+      "description": "User profile with RBAC role and assigned classes",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "teacher"] },
+        "assignedGroups": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "user",
+      "description": "User account profiles and RBAC role assignments"
+    },
+    "/students/{studentId}": {
+      "schema": "student",
+      "description": "Student roster collection with student records"
+    },
+    "/payrollReports/{reportId}": {
+      "schema": "payrollReport",
+      "description": "Historical teacher payroll settlements"
+    },
+    "/appSettings/globalConfig": {
+      "schema": "appSettings",
+      "description": "Global configuration, reference date, and notifications"
+    }
+  }
+}

@@ -1,0 +1,62 @@
+appId: com.classmanager.app
+productName: ClassManager
+copyright: Copyright © 2026 Chan Eng Dom
+
+# ── Directories ───────────────────────────────────────────────
+directories:
+  buildResources: assets
+  output: release
+
+# ── Files to include ──────────────────────────────────────────
+files:
+  - dist/**          # Vite built React app
+  - electron-dist/** # Compiled Electron main + preload
+  - assets/**        # Icons
+  - package.json
+
+# ── Mac target ────────────────────────────────────────────────
+mac:
+  category: public.app-category.education
+  target:
+    - target: dmg
+      arch: [arm64]    # Apple Silicon
+  icon: assets/icon.icns
+
+dmg:
+  title: ClassManager
+  contents:
+    - x: 410
+      y: 150
+      type: link
+      path: /Applications
+    - x: 130
+      y: 150
+      type: file
+
+# ── Windows target ────────────────────────────────────────────
+win:
+  target:
+    - target: nsis           # Standard Windows installer
+      arch: [x64]
+  icon: assets/icon.ico
+
+nsis:
+  oneClick: false            # Show installer wizard
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: ClassManager
+
+# ── Linux target (optional) ───────────────────────────────────
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+  category: Education
+  icon: assets/icon.png
+
+# ── Auto-update (GitHub Releases) ──────────────────────────────
+publish:
+  provider: github
+  owner: engzoly
+  repo: on_class_manager

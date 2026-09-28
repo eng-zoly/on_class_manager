@@ -1,0 +1,8 @@
+{
+  "name": "Class Management System",
+  "description": "An online class and student management system for computer course teachers to track student progress, exercise completion, course expiries, exam eligibility, and monthly payroll.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

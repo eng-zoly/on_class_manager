@@ -1,0 +1,51 @@
+{
+  "name": "classmanager",
+  "productName": "ClassManager",
+  "private": true,
+  "version": "1.0.0",
+  "description": "ClassManager - Desktop App for managing students",
+  "author": "Chan Eng Dom <chanengdom12@gmail.com>",
+  "main": "electron-dist/main.js",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs",
+    "preview": "vite preview",
+    "clean": "rm -rf dist electron-dist release",
+    "lint": "tsc --noEmit",
+    "electron:compile": "tsc -p tsconfig.electron.json",
+    "electron:dev": "concurrently -k \"vite\" \"npm run electron:compile && electron .\"",
+    "electron:build": "vite build && tsc -p tsconfig.electron.json && electron-builder",
+    "electron:build:mac": "vite build && tsc -p tsconfig.electron.json && electron-builder --mac",
+    "electron:publish": "vite build && tsc -p tsconfig.electron.json && electron-builder --mac -p always",
+    "electron:build:win": "vite build && tsc -p tsconfig.electron.json && electron-builder --win",
+    "electron:build:linux": "vite build && tsc -p tsconfig.electron.json && electron-builder --linux"
+  },
+  "dependencies": {
+    "@google/genai": "^2.4.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "@vitejs/plugin-react": "^5.0.4",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "firebase": "^12.17.0",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "vite": "^6.2.3"
+  },
+  "devDependencies": {
+    "@types/electron": "^1.6.10",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^9.2.4",
+    "electron": "^32.3.3",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.25.0",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.3"
+  }
+}

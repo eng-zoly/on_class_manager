@@ -1,0 +1,980 @@
+@import url('https://fonts.googleapis.com/css2?family=Kantumruy+Pro:ital,wght@0,300..700;1,300..700&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&family=JetBrains+Mono:wght@400;500;700&family=Dancing+Script:wght@400;700&display=swap');
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", "Kantumruy Pro", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-signature: "Dancing Script", cursive;
+}
+
+@page {
+  size: A4 portrait;
+  margin: 1cm;
+}
+
+@media print {
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    transition: none !important;
+    animation: none !important;
+  }
+
+  /* 1. Global Print Color Preservation and Viewport Reset */
+  html,
+  body {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    background-color: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    -webkit-font-smoothing: antialiased !important;
+  }
+
+  #root,
+  #root > div,
+  main,
+  div[class*="overflow"],
+  div[class*="min-h-screen"],
+  div[class*="max-w-7xl"] {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    position: static !important;
+    transform: none !important;
+    filter: none !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  /* 2. Hide all non-printable screen UI */
+  header,
+  nav,
+  aside,
+  sidebar,
+  button,
+  input,
+  select,
+  textarea,
+  .print\:hidden,
+  .no-print,
+  .print-hidden,
+  [data-no-print],
+  div[class*="sticky top-"],
+  div[class*="backdrop-blur"],
+  div[class*="shadow-2xs"],
+  div[class*="shadow-3xs"] {
+    display: none !important;
+  }
+
+  /* 3. Ensure no element forces a page break before the start */
+  #print-section,
+  #print-section *,
+  #print-section-expiry,
+  #print-section-roster,
+  #print-section-portfolio,
+  #print-section-exam {
+    break-before: auto !important;
+    page-break-before: auto !important;
+  }
+
+  /* 4. Display active print sections cleanly */
+  #print-section,
+  #print-section-expiry,
+  #print-section-roster,
+  #print-section-portfolio,
+  #print-section-exam {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background-color: #ffffff !important;
+    overflow: visible !important;
+    float: none !important;
+    box-sizing: border-box !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    break-before: auto !important;
+    page-break-before: auto !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  #print-section *,
+  #print-section-expiry *,
+  #print-section-roster *,
+  #print-section-portfolio *,
+  #print-section-exam * {
+    visibility: visible !important;
+    opacity: 1 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* 5. Forcefully preserve background colors, text colors, and borders for all badges, tags, and table headers */
+  th,
+  td,
+  span,
+  div,
+  p,
+  a,
+  svg,
+  h1, h2, h3, h4, h5, h6,
+  table,
+  tr,
+  thead,
+  tbody,
+  tfoot {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  a {
+    text-decoration: none !important;
+  }
+
+  /* Status Badges, Pills, Chips & Tags */
+  [class*="bg-"],
+  [class*="text-"],
+  [class*="border-"],
+  .badge,
+  [class*="badge"],
+  span[class*="rounded"],
+  div[class*="rounded"],
+  .course-subheading-row {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Explicit table styling with color preservation */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  th {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    font-weight: 700 !important;
+  }
+
+  /* 6. Section Specific Color & Table Styling Preservation */
+  #print-section .course-subheading-row {
+    background-color: #f1f5f9 !important;
+    border-top: 2px solid #334155 !important;
+    border-bottom: 1px solid #64748b !important;
+    font-weight: 700 !important;
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  #print-section .group-subheading-row {
+    background-color: #f9fafb !important;
+    border-top: 1px solid #e5e7eb !important;
+    border-bottom: 1px solid #e5e7eb !important;
+    font-weight: 700 !important;
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* 7. Optimize table layout and pagination across all printed sections */
+  tr, 
+  .print-break-inside-avoid, 
+  .avoid-break, 
+  .print-avoid-break {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  tbody {
+    display: table-row-group !important;
+  }
+
+  tfoot {
+    display: table-footer-group !important;
+  }
+
+  .avoid-break-after {
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  /* 8. Print Grading (Student Evaluation) View Layout & Print Rules */
+
+  /* 8.1 Hide Interactive Elements: Dropout, Print Grading, Add Exercise, Mark All Done, Reset, Delete, and Sidebar */
+  #student-selector-sidebar,
+  .dropout-btn,
+  .print-grading-btn,
+  .add-exercise-btn,
+  .complete-all-btn,
+  .reset-subject-btn,
+  .exercise-delete-btn,
+  .action-btn-print-hide {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    width: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* 8.2 Clean Grid Layouts for Exercises (EX01...) and Quizzes (Q01...) */
+  .exercise-grid,
+  .quiz-grid {
+    display: grid !important;
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    gap: 0.5rem !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Exercise & Quiz Item Cards in Print */
+  button.exercise-item-box,
+  button.quiz-item-box,
+  div.exercise-item-box,
+  div.quiz-item-box,
+  .exercise-item-box,
+  .quiz-item-box {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    align-items: stretch !important;
+    height: 56px !important;
+    min-height: 56px !important;
+    max-height: 60px !important;
+    padding: 0.35rem 0.5rem !important;
+    border-radius: 0.5rem !important;
+    text-align: center !important;
+    box-sizing: border-box !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    cursor: default !important;
+  }
+
+  .exercise-item-box *,
+  .quiz-item-box * {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  /* 8.3 Prevent Awkward Page Breaks: Course Containers & Student Header Card */
+  .course-container,
+  .student-header-card,
+  .print-signatures-block {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    box-sizing: border-box !important;
+  }
+
+  /* 8.4 Preserve Exact Colors for Progress Bars, Exercise Boxes, and Status Badges */
+  .progress-track {
+    background-color: #e2e8f0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  .progress-fill {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  .exercise-item-box.is-completed,
+  .exercise-item-box[class*="bg-emerald"] {
+    background-color: #ecfdf5 !important;
+    border: 1px solid #6ee7b7 !important;
+    color: #065f46 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  .exercise-item-box.is-pending,
+  .exercise-item-box[class*="bg-white"] {
+    background-color: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #475569 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  .quiz-item-box.is-completed,
+  .quiz-item-box[class*="bg-sky"] {
+    background-color: #f0f9ff !important;
+    border: 1px solid #7dd3fc !important;
+    color: #075985 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  .quiz-item-box.is-pending,
+  .quiz-item-box[class*="bg-white"] {
+    background-color: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #475569 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* 8.5 Refine Spacing: Compact padding and clean borders for professional report appearance */
+  .student-header-card,
+  .course-container {
+    padding: 1rem !important;
+    margin-bottom: 0.85rem !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 0.75rem !important;
+    background-color: #ffffff !important;
+  }
+
+  /* 9. Final Exams Center View Print Rules */
+
+  /* 9.1 Completely Hide Exam History (Header, list of past exam records, reverse & edit buttons) */
+  #exam-history-section,
+  .exam-history-section,
+  [data-section="exam-history"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    width: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* 9.2 Hide All Action Buttons within Final Exams Center and Ready for Exams Section */
+  .enter-result-btn,
+  .exam-action-btn,
+  .print-exam-candidate-btn,
+  #exam-ready-section button:not(.student-name-btn) {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    width: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* Ensure student name is styled cleanly when printing */
+  button.student-name-btn {
+    display: inline !important;
+    visibility: visible !important;
+    color: #0f172a !important;
+    font-weight: 700 !important;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    text-decoration: none !important;
+  }
+
+  /* 9.3 Format Ready for Exams Section as a Clean, Full-Width Formal List */
+  .exam-center-grid {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  #exam-ready-section,
+  .exam-ready-section {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 0.5rem !important;
+    box-shadow: none !important;
+    background-color: #ffffff !important;
+    margin-bottom: 1.5rem !important;
+    break-inside: auto !important;
+  }
+
+  #exam-ready-section > div,
+  .exam-ready-section > div {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  .exam-ready-student-row {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    padding: 0.75rem 1rem !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    background-color: #ffffff !important;
+  }
+
+  /* 9.4 Ensure Introduction Banner Header Looks Formal and Crisp in Print */
+  .exam-center-intro {
+    background-color: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 0.5rem !important;
+    box-shadow: none !important;
+    padding: 0.85rem 1rem !important;
+    margin-bottom: 1rem !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .exam-center-intro h3 {
+    color: #0f172a !important;
+    font-weight: 800 !important;
+  }
+
+  .exam-center-intro p {
+    color: #334155 !important;
+  }
+
+  /* When printing an individual student's exam result slip via handlePrintExam, hide the exams center list */
+  body.print-exam .exam-center-intro,
+  body.print-exam .exam-center-grid,
+  body.print-exam #exam-ready-section,
+  body.print-exam #exam-history-section {
+    display: none !important;
+  }
+
+  /* 10. Teacher Signature & Document Footer Print Formatting */
+
+  /* 10.1 Hide Sub-text: Completely hide any system text, assistant roles, or extra labels located directly below the teacher's name */
+  footer,
+  .document-footer-block,
+  .system-subtext,
+  .assistant-role-subtext,
+  [data-system-subtext],
+  .teacher-signature-block ~ .document-footer-block,
+  .teacher-signature-block + div {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* 10.2 Standardize Name Text: Make the teacher's name ('Chan Eng Dom') standard document text */
+  .teacher-name-text,
+  .teacher-signature-block .teacher-name-text,
+  [data-teacher-name] {
+    font-family: inherit !important;
+    font-size: 12pt !important;
+    font-weight: normal !important;
+    line-height: 1.5 !important;
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+    display: block !important;
+    margin-top: 0.25rem !important;
+  }
+
+  /* Ensure no oversized headings, heavy bolding, or badges remain on the teacher's name or signatures */
+  .teacher-signature-block,
+  .teacher-signature-block *,
+  .print-signatures-block,
+  .print-signatures-block * {
+    text-shadow: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    background-color: #ffffff !important;
+  }
+
+  .teacher-signature-block p,
+  .print-signatures-block p {
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
+  }
+
+  /* 10.3 Clean Signature Line: Clean line without UI badges, shadows, or rounded corners */
+  .teacher-signature-block,
+  .print-signatures-block {
+    background: transparent !important;
+    background-color: #ffffff !important;
+    border-top: 1px solid #cbd5e1 !important;
+    border-bottom: none !important;
+    border-left: none !important;
+    border-right: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding-top: 1.5rem !important;
+    margin-top: 1.5rem !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .signature-line {
+    color: #64748b !important;
+    -webkit-text-fill-color: #64748b !important;
+    font-family: monospace !important;
+    letter-spacing: 0.15em !important;
+    margin-bottom: 0.25rem !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   macOS Electron Window & Traffic Light Button Optimizations
+   ───────────────────────────────────────────────────────────── */
+html.is-mac header {
+  padding-left: 96px !important;
+  -webkit-app-region: drag;
+}
+
+html.is-mac header > * {
+  -webkit-app-region: no-drag;
+}
+
+/* Ensure interactive controls can always be clicked normally */
+button,
+input,
+select,
+textarea,
+a,
+[role="button"],
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* macOS Top Drag Bar for Login Screen */
+.mac-drag-bar {
+  display: none;
+}
+
+html.is-mac .mac-drag-bar {
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 38px;
+  -webkit-app-region: drag;
+  z-index: 9999;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Seamless Clean UI: Hide Scrollbars Globally (Scroll Functional)
+   ───────────────────────────────────────────────────────────── */
+* {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+*::-webkit-scrollbar,
+::-webkit-scrollbar {
+  display: none !important;
+  width: 0px !important;
+  height: 0px !important;
+  background: transparent !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Premium Dark Mode System Theme (macOS Native Aesthetic)
+   ───────────────────────────────────────────────────────────── */
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body {
+  background-color: #0b0f19 !important;
+  color: #f1f5f9 !important;
+}
+
+/* Eliminate all bright gradients in dark mode */
+html.dark [class*="bg-gradient-to-b"],
+html.dark [class*="bg-gradient-to-r"],
+html.dark [class*="from-slate-50"],
+html.dark [class*="to-slate-100"] {
+  background-image: none !important;
+}
+
+html.dark .min-h-screen {
+  background-color: #0b0f19 !important;
+  background-image: none !important;
+}
+
+/* Main window container */
+html.dark main {
+  background-color: transparent !important;
+}
+
+/* Base Cards & Containers (replacing bg-white) */
+html.dark .bg-white,
+html.dark .bg-white\/80,
+html.dark .bg-white\/90,
+html.dark .bg-white\/95 {
+  background-color: #141b27 !important;
+  border-color: #222d3e !important;
+}
+
+/* Secondary Panels, Tables Headers, Insets (replacing bg-slate-50, bg-gray-50) */
+html.dark .bg-slate-50,
+html.dark .bg-slate-50\/40,
+html.dark .bg-slate-50\/50,
+html.dark .bg-slate-50\/60,
+html.dark .bg-slate-50\/80,
+html.dark .bg-gray-50,
+html.dark .bg-gray-50\/50,
+html.dark .bg-gray-50\/80 {
+  background-color: #0e141f !important;
+  border-color: #222d3e !important;
+}
+
+/* Inset Buttons, Search Bars, Table Zebra Rows, Sub-items (replacing bg-slate-100, bg-gray-100) */
+html.dark .bg-slate-100,
+html.dark .bg-slate-100\/50,
+html.dark .bg-slate-100\/60,
+html.dark .bg-slate-100\/65,
+html.dark .bg-slate-100\/80,
+html.dark .bg-gray-100,
+html.dark .bg-gray-100\/50,
+html.dark .bg-gray-100\/80 {
+  background-color: #1a2333 !important;
+  border-color: #2c3a50 !important;
+}
+
+html.dark .bg-slate-200,
+html.dark .bg-gray-200 {
+  background-color: #243247 !important;
+}
+
+/* Typography Hierarchy - Crystal clear contrast in dark mode */
+/* 1. Primary Headings & High-Contrast Titles */
+html.dark .text-slate-900,
+html.dark .text-slate-800,
+html.dark .text-gray-900,
+html.dark .text-gray-800,
+html.dark .text-zinc-900,
+html.dark .text-zinc-800,
+html.dark .text-neutral-900,
+html.dark .text-neutral-800,
+html.dark .text-black {
+  color: #f8fafc !important;
+}
+
+/* 2. Body Text & Regular Content */
+html.dark .text-slate-700,
+html.dark .text-slate-600,
+html.dark .text-gray-700,
+html.dark .text-gray-600,
+html.dark .text-zinc-700,
+html.dark .text-zinc-600 {
+  color: #cbd5e1 !important;
+}
+
+/* 3. Subtitles, Secondary Labels & Muted Content */
+html.dark .text-slate-500,
+html.dark .text-slate-400,
+html.dark .text-gray-500,
+html.dark .text-gray-400,
+html.dark .text-zinc-500,
+html.dark .text-zinc-400 {
+  color: #94a3b8 !important;
+}
+
+/* Borders in Dark Mode */
+html.dark .border-slate-100,
+html.dark .border-slate-200,
+html.dark .border-slate-200\/40,
+html.dark .border-slate-200\/60,
+html.dark .border-slate-200\/70,
+html.dark .border-slate-200\/80,
+html.dark .border-gray-100,
+html.dark .border-gray-200,
+html.dark .border-zinc-100,
+html.dark .border-zinc-200 {
+  border-color: #222d3e !important;
+}
+
+html.dark .border-slate-300,
+html.dark .border-gray-300 {
+  border-color: #313f56 !important;
+}
+
+html.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+html.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]),
+html.dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
+html.dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #222d3e !important;
+}
+
+/* Header & Navigation Bar in Dark Mode */
+html.dark header {
+  background-color: rgba(14, 20, 31, 0.94) !important;
+  border-color: rgba(34, 45, 62, 0.8) !important;
+  backdrop-filter: blur(16px) !important;
+}
+
+html.dark nav,
+html.dark .sticky.top-16 {
+  background-color: #0e141f !important;
+  border-color: rgba(34, 45, 62, 0.8) !important;
+}
+
+/* Active navigation tab highlight in dark mode */
+html.dark .sticky.top-16 [class*="bg-indigo-50"] {
+  background-color: rgba(99, 102, 241, 0.22) !important;
+  border-color: rgba(129, 140, 248, 0.45) !important;
+}
+
+/* Inputs, Selects & Textareas */
+html.dark input[type="text"],
+html.dark input[type="password"],
+html.dark input[type="date"],
+html.dark input[type="number"],
+html.dark input[type="search"],
+html.dark input[type="tel"],
+html.dark select,
+html.dark textarea {
+  background-color: #0e141f !important;
+  color: #f8fafc !important;
+  border-color: #2c3a50 !important;
+}
+
+html.dark input:focus,
+html.dark select:focus,
+html.dark textarea:focus {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25) !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* Status Badges, Chips & Highlights (Apple-style Translucent Glow) */
+/* Indigo */
+html.dark .bg-indigo-50,
+html.dark .bg-indigo-100 {
+  background-color: rgba(99, 102, 241, 0.18) !important;
+  color: #a5b4fc !important;
+  border-color: rgba(99, 102, 241, 0.35) !important;
+}
+html.dark .text-indigo-600,
+html.dark .text-indigo-700,
+html.dark .text-indigo-800 {
+  color: #a5b4fc !important;
+}
+
+/* Emerald / Green */
+html.dark .bg-emerald-50,
+html.dark .bg-emerald-100,
+html.dark .bg-green-50,
+html.dark .bg-green-100 {
+  background-color: rgba(16, 185, 129, 0.18) !important;
+  color: #6ee7b7 !important;
+  border-color: rgba(16, 185, 129, 0.35) !important;
+}
+html.dark .text-emerald-600,
+html.dark .text-emerald-700,
+html.dark .text-emerald-800,
+html.dark .text-green-600,
+html.dark .text-green-700 {
+  color: #6ee7b7 !important;
+}
+
+/* Rose / Red */
+html.dark .bg-rose-50,
+html.dark .bg-rose-100,
+html.dark .bg-red-50,
+html.dark .bg-red-100 {
+  background-color: rgba(244, 63, 94, 0.18) !important;
+  color: #fda4af !important;
+  border-color: rgba(244, 63, 94, 0.35) !important;
+}
+html.dark .text-rose-600,
+html.dark .text-rose-700,
+html.dark .text-rose-800,
+html.dark .text-red-600,
+html.dark .text-red-700 {
+  color: #fda4af !important;
+}
+
+/* Amber / Orange / Yellow */
+html.dark .bg-amber-50,
+html.dark .bg-amber-100,
+html.dark .bg-orange-50,
+html.dark .bg-orange-100,
+html.dark .bg-yellow-50,
+html.dark .bg-yellow-100 {
+  background-color: rgba(245, 158, 11, 0.18) !important;
+  color: #fcd34d !important;
+  border-color: rgba(245, 158, 11, 0.35) !important;
+}
+html.dark .text-amber-600,
+html.dark .text-amber-700,
+html.dark .text-amber-800,
+html.dark .text-orange-600,
+html.dark .text-yellow-600 {
+  color: #fcd34d !important;
+}
+
+/* Sky / Blue / Cyan */
+html.dark .bg-sky-50,
+html.dark .bg-sky-100,
+html.dark .bg-blue-50,
+html.dark .bg-blue-100 {
+  background-color: rgba(56, 189, 248, 0.18) !important;
+  color: #7dd3fc !important;
+  border-color: rgba(56, 189, 248, 0.35) !important;
+}
+html.dark .text-sky-600,
+html.dark .text-sky-700,
+html.dark .text-blue-600,
+html.dark .text-blue-700 {
+  color: #7dd3fc !important;
+}
+
+/* Purple / Violet */
+html.dark .bg-purple-50,
+html.dark .bg-purple-100 {
+  background-color: rgba(168, 85, 247, 0.18) !important;
+  color: #d8b4fe !important;
+  border-color: rgba(168, 85, 247, 0.35) !important;
+}
+html.dark .text-purple-600,
+html.dark .text-purple-700 {
+  color: #d8b4fe !important;
+}
+
+/* Hover effects */
+html.dark .hover\:bg-slate-50:hover,
+html.dark .hover\:bg-slate-100:hover,
+html.dark .hover\:bg-gray-50:hover,
+html.dark .hover\:bg-gray-100:hover {
+  background-color: #1e293b !important;
+}
+
+/* Table Hover and Active rows */
+html.dark tbody tr:hover,
+html.dark tr.hover\:bg-slate-50:hover,
+html.dark tr.hover\:bg-gray-50:hover {
+  background-color: rgba(30, 41, 59, 0.65) !important;
+}
+
+/* Grading Panel specific styling */
+html.dark #student-selector-sidebar {
+  background-color: #141b27 !important;
+  border-color: #222d3e !important;
+}
+
+html.dark .student-header-card {
+  background-color: #141b27 !important;
+  border-color: #222d3e !important;
+}
+
+html.dark .course-container {
+  background-color: #141b27 !important;
+  border-color: #222d3e !important;
+}
+
+html.dark .exercise-item-box.is-pending,
+html.dark .quiz-item-box.is-pending {
+  background-color: #0e141f !important;
+  border-color: #243044 !important;
+  color: #e2e8f0 !important;
+}
+
+html.dark .exercise-item-box.is-pending:hover,
+html.dark .quiz-item-box.is-pending:hover {
+  border-color: #6366f1 !important;
+  background-color: #182232 !important;
+}
+
+html.dark .exercise-item-box.is-pending span,
+html.dark .quiz-item-box.is-pending span {
+  color: #cbd5e1 !important;
+}
+
+html.dark .exercise-item-box.is-completed {
+  background-color: rgba(16, 185, 129, 0.16) !important;
+  border-color: rgba(16, 185, 129, 0.4) !important;
+  color: #6ee7b7 !important;
+}
+
+html.dark .quiz-item-box.is-completed {
+  background-color: rgba(56, 189, 248, 0.16) !important;
+  border-color: rgba(56, 189, 248, 0.4) !important;
+  color: #7dd3fc !important;
+}
+
+html.dark .progress-track {
+  background-color: #222d3e !important;
+}
+
+/* Modals & Side Drawer */
+html.dark #notification-side-drawer,
+html.dark div[role="dialog"],
+html.dark .modal-content {
+  background-color: #141b27 !important;
+  border-color: #2c3a50 !important;
+}
+
+/* Subtle Clouds Layer in Dark Mode */
+html.dark #clouds-layer svg path {
+  fill: #1e293b !important;
+  opacity: 0.12 !important;
+}
+
+
+
