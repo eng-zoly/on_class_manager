@@ -45,10 +45,12 @@ export const compareVersions = (v1: string, v2: string): number => {
   return 0;
 };
 
+export const APP_VERSION = '1.0.1';
+
 /**
  * Check for updates against GitHub Releases API
  */
-export const checkForAppUpdates = async (currentVersion: string = '1.0.0'): Promise<AppReleaseInfo> => {
+export const checkForAppUpdates = async (currentVersion: string = APP_VERSION): Promise<AppReleaseInfo> => {
   const { owner, repo } = getUpdateConfig();
   const apiUrl = `https://api.github.com/repos/${owner}/${repo}/releases/latest`;
 

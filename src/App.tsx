@@ -42,7 +42,7 @@ import ChangePasswordModal from './components/ChangePasswordModal';
 import SettingsModal, { ThemeMode } from './components/SettingsModal';
 import LoginPage from './components/LoginPage';
 import { useAuth } from './context/AuthContext';
-import { checkForAppUpdates } from './services/updateService';
+import { checkForAppUpdates, APP_VERSION } from './services/updateService';
 import appLogo from '../assets/logo.png';
 
 // Icons
@@ -451,7 +451,7 @@ export default function App() {
     if (!isAuthenticated) return;
     const timer = setTimeout(async () => {
       try {
-        const release = await checkForAppUpdates('1.0.0');
+        const release = await checkForAppUpdates(APP_VERSION);
         if (release.hasUpdate) {
           addNotification(
             'system',

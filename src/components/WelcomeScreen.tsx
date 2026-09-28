@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Student } from '../types';
 import { getStudentStatus, isStudentExamEligible } from '../utils/studentUtils';
+import { APP_VERSION } from '../services/updateService';
 import TeacherIllustration from './TeacherIllustration';
 import { 
   Sparkles, 
@@ -90,7 +91,7 @@ export default function WelcomeScreen({
                 </span>
               </h1>
               <p className="text-slate-300 text-sm sm:text-base leading-relaxed max-w-xl">
-                ប្រព័ន្ធគ្រប់គ្រងសិស្ស តាមដានវឌ្ឍនភាពលំហាត់ ប្រឡងបញ្ចប់វគ្គ និងរបាយការណ៍កម្រៃគ្រូបង្រៀនរបស់ <strong className="text-white">លោកគ្រូ Chan Eng Dom</strong>
+                ប្រព័ន្ធគ្រប់គ្រងសិស្ស តាមដានវឌ្ឍនភាពលំហាត់ ប្រឡងបញ្ចប់វគ្គ និងរបាយការណ៍កម្រៃគ្រូបង្រៀនរបស់ <strong className="text-white font-bold tracking-wide">លោកគ្រូ CHAN ENG DOM</strong>
               </p>
             </div>
 
@@ -294,7 +295,7 @@ export default function WelcomeScreen({
         </label>
 
         <span className="text-[11px] text-slate-400 font-mono">
-          ClassManager Desktop v1.0.0
+          ClassManager Desktop v{APP_VERSION}
         </span>
       </div>
     </div>

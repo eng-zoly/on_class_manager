@@ -23,7 +23,7 @@ import {
   CheckCircle2,
   ExternalLink
 } from 'lucide-react';
-import { checkForAppUpdates, getUpdateConfig, saveUpdateConfig, AppReleaseInfo } from '../services/updateService';
+import { checkForAppUpdates, getUpdateConfig, saveUpdateConfig, AppReleaseInfo, APP_VERSION } from '../services/updateService';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
@@ -70,7 +70,7 @@ export default function SettingsModal({
     setIsCheckingUpdate(true);
     setUpdateError(null);
     try {
-      const result = await checkForAppUpdates('1.0.0');
+      const result = await checkForAppUpdates(APP_VERSION);
       setUpdateInfo(result);
     } catch (err: any) {
       setUpdateError(err.message || 'បរាជ័យក្នុងការពិនិត្យមើលការអាប់ដេត');
@@ -422,7 +422,7 @@ export default function SettingsModal({
                     <div>
                       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">កំណែបច្ចុប្បន្ន (Current Version)</span>
                       <div className="text-lg font-black text-slate-900 dark:text-white mt-0.5 font-mono flex items-center gap-2">
-                        <span>v1.0.0</span>
+                        <span>v{APP_VERSION}</span>
                         <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
                           Active Build
                         </span>
@@ -610,7 +610,7 @@ export default function SettingsModal({
             {/* Footer */}
             <div className="px-6 py-3.5 bg-slate-50 dark:bg-slate-900/80 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
               <div className="text-[11px] text-slate-400 font-mono">
-                ClassManager Desktop v1.0.0
+                ClassManager Desktop v{APP_VERSION}
               </div>
               <button
                 type="button"
