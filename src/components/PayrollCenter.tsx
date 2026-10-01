@@ -282,8 +282,10 @@ export default function PayrollCenter({
       if (courseStudents.length === 0) return;
       text += `\n[ វគ្គសិក្សា៖ ${courseName} (${courseStudents.length} នាក់) ]\n`;
       courseStudents.forEach((s, idx) => {
+        const fullStudentInfo = students.find(master => master.student_id === s.student_id);
+        const desc = (s.notes || (s as any).description || fullStudentInfo?.notes || (fullStudentInfo as any)?.description || '').trim();
         const typeBadge = isContinuingStudent(s) ? '[សិក្សាបន្ត]' : '[សិស្សថ្មី]';
-        text += `${idx + 1}. [${s.student_id}] ${s.full_name} (${s.gender}) ${typeBadge} - វិក្កយបត្រ៖ ${s.receipt_number} - ថ្ងៃចូលរៀន៖ ${s.start_date}\n`;
+        text += `${idx + 1}. [${s.student_id}] ${s.full_name} (${s.gender}) ${typeBadge} - វិក្កយបត្រ៖ ${s.receipt_number} - ថ្ងៃចូលរៀន៖ ${s.start_date}${desc ? ` - Description: ${desc}` : ''}\n`;
       });
     });
     
@@ -385,7 +387,7 @@ export default function PayrollCenter({
         pending_renewal_fee: s.pending_renewal_fee,
         telegram_name: s.telegram_name || '',
         contact: s.contact || '',
-        notes: s.notes || '',
+        notes: (s.notes || (s as any).description || '').trim(),
         group: s.group || ''
       }))
     };
@@ -423,7 +425,7 @@ export default function PayrollCenter({
       const typeText = isContinuingStudent(s) ? 'Continuing' : 'New';
       const fullStudentInfo = students.find(stud => stud.student_id === s.student_id);
       const username = s.telegram_name || fullStudentInfo?.telegram_name || s.contact || fullStudentInfo?.contact || '';
-      const notes = s.notes || fullStudentInfo?.notes || '';
+      const notes = (s.notes || (s as any).description || fullStudentInfo?.notes || (fullStudentInfo as any)?.description || '').trim();
       csvContent += `"${s.student_id}","${s.full_name}","${s.gender}","${typeText}","${s.receipt_number}","${s.course}","${s.start_date}","${username}","${notes.replace(/"/g, '""')}"\n`;
     });
 
@@ -454,15 +456,65 @@ export default function PayrollCenter({
                 <p className="text-xs text-gray-500 mt-0.5">ស្វែងរកសិស្សថ្មី (New) និងសិស្សបន្ត (Renewals) ដែលបានកំណត់គិតប្រាក់កម្រៃជូនគ្រូ</p>
               </div>
 
-              {/* Month selector for draft generation */}
-              <div className="flex items-center space-x-2">
-                <label className="text-xs font-semibold text-gray-500">សម្រាប់ខែ៖</label>
-                <input
-                  type="month"
-                  value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(e.target.value)}
-                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+              {/* Month selector and Print draft button */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center space-x-2">
+                  <label className="text-xs font-semibold text-gray-500">សម្រាប់ខែ៖</label>
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (draftStudents.length > 0) {
+                      const draftReport: PayrollReport = {
+                        id: `PR-${selectedMonth.replace('-', '')}-DRAFT`,
+                        report_month: selectedMonth,
+                        generated_date: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                        student_count_office: draftMetrics.courseBreakdown['Computer Basic Office']?.count || 0,
+                        student_count_advanced: draftMetrics.courseBreakdown['Advanced Excel']?.count || 0,
+                        rate_office: draftMetrics.courseBreakdown['Computer Basic Office']?.rate || 7.00,
+                        rate_advanced: draftMetrics.courseBreakdown['Advanced Excel']?.rate || 11.00,
+                        total_payment: draftMetrics.grandTotal,
+                        students: draftStudents.map(s => ({
+                          student_id: s.student_id,
+                          full_name: s.full_name,
+                          gender: s.gender,
+                          receipt_number: s.receipt_number,
+                          course: s.course,
+                          start_date: s.start_date,
+                          student_type: isContinuingStudent(s) ? 'Continuing' : 'New',
+                          pending_renewal_fee: s.pending_renewal_fee,
+                          telegram_name: s.telegram_name || '',
+                          contact: s.contact || '',
+                          notes: (s.notes || (s as any).description || '').trim(),
+                          group: s.group || ''
+                        }))
+                      };
+                      setPrintingReport(draftReport);
+                    } else {
+                      const existingReport = payrollReports.find(r => r.report_month === selectedMonth);
+                      if (existingReport) {
+                        setPrintingReport(existingReport);
+                      } else {
+                        setNotification({
+                          message: `មិនមានទិន្នន័យសិស្សសម្រាប់បោះពុម្ភក្នុងខែ ${selectedMonth} ឡើយ។ (No student data to print for ${selectedMonth})`,
+                          type: 'error'
+                        });
+                      }
+                    }
+                  }}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                  title="បោះពុម្ភរបាយការណ៍ជា PDF សម្រាប់ខែនេះ (Print PDF for this month)"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  <span>បោះពុម្ភ PDF សម្រាប់ខែ (Print PDF)</span>
+                </button>
               </div>
             </div>
 
@@ -592,10 +644,10 @@ export default function PayrollCenter({
                                       )}
                                     </div>
                                   )}
-                                  {student.notes && (
+                                  {(student.notes || (student as any).description) && (
                                     <div className="flex items-start gap-1 text-gray-500">
                                       <span className="font-medium text-gray-400 shrink-0">Description:</span>
-                                      <span className="text-gray-600 italic line-clamp-1">{student.notes}</span>
+                                      <span className="text-gray-600 italic break-words">{student.notes || (student as any).description}</span>
                                     </div>
                                   )}
                                 </div>
@@ -635,9 +687,61 @@ export default function PayrollCenter({
               )}
             </div>
 
-            {/* Freeze button */}
-            {draftStudents.length > 0 && (
-              <div className="flex justify-end pt-4 border-t border-gray-100">
+            {/* Action buttons: Print PDF & Freeze button */}
+            <div className="flex flex-wrap justify-between items-center gap-3 pt-4 border-t border-gray-100">
+              {(() => {
+                const existingReport = payrollReports.find(r => r.report_month === selectedMonth);
+                const canPrint = draftStudents.length > 0 || !!existingReport;
+                
+                return (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (draftStudents.length > 0) {
+                        const draftReport: PayrollReport = {
+                          id: `PR-${selectedMonth.replace('-', '')}-DRAFT`,
+                          report_month: selectedMonth,
+                          generated_date: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                          student_count_office: draftMetrics.courseBreakdown['Computer Basic Office']?.count || 0,
+                          student_count_advanced: draftMetrics.courseBreakdown['Advanced Excel']?.count || 0,
+                          rate_office: draftMetrics.courseBreakdown['Computer Basic Office']?.rate || 7.00,
+                          rate_advanced: draftMetrics.courseBreakdown['Advanced Excel']?.rate || 11.00,
+                          total_payment: draftMetrics.grandTotal,
+                          students: draftStudents.map(s => ({
+                            student_id: s.student_id,
+                            full_name: s.full_name,
+                            gender: s.gender,
+                            receipt_number: s.receipt_number,
+                            course: s.course,
+                            start_date: s.start_date,
+                            student_type: isContinuingStudent(s) ? 'Continuing' : 'New',
+                            pending_renewal_fee: s.pending_renewal_fee,
+                            telegram_name: s.telegram_name || '',
+                            contact: s.contact || '',
+                            notes: (s.notes || (s as any).description || '').trim(),
+                            group: s.group || ''
+                          }))
+                        };
+                        setPrintingReport(draftReport);
+                      } else if (existingReport) {
+                        setPrintingReport(existingReport);
+                      }
+                    }}
+                    disabled={!canPrint}
+                    className={`flex items-center space-x-1.5 px-4 py-2.5 rounded-lg font-bold text-sm shadow-xs transition-colors ${
+                      !canPrint
+                        ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                        : 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer'
+                    }`}
+                    title={`បោះពុម្ភរបាយការណ៍ជា PDF សម្រាប់ខែ ${selectedMonth}`}
+                  >
+                    <Printer className="h-4 w-4" />
+                    <span>បោះពុម្ភ PDF សម្រាប់ខែ {selectedMonth}</span>
+                  </button>
+                );
+              })()}
+
+              {draftStudents.length > 0 && (
                 <button
                   onClick={handleFreezeReport}
                   className="flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg font-bold text-sm shadow-xs transition-colors cursor-pointer"
@@ -646,8 +750,8 @@ export default function PayrollCenter({
                   <CheckCircle2 className="h-4 w-4" />
                   <span>ចាក់សោរ និងរក្សាទុករបាយការណ៍ (Freeze Report)</span>
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
 
@@ -955,13 +1059,14 @@ export default function PayrollCenter({
                   <table className="w-full text-left border-collapse text-xs print:border print:border-gray-200">
                     <thead>
                       <tr className="bg-gray-100 border-b border-gray-200 text-gray-700 font-bold uppercase text-[11px]">
-                        <th className="py-3 px-4 w-12 text-center">Nº</th>
-                        <th className="py-3 px-4 w-24">ID</th>
-                        <th className="py-3 px-4">ឈ្មោះសិស្ស (Full Name)</th>
-                        <th className="py-3 px-4 w-28">លេខវិក្កយបត្រ (Receipt)</th>
-                        <th className="py-3 px-4">វគ្គសិក្សា (Course)</th>
-                        <th className="py-3 px-4 w-28">ថ្ងៃចុះឈ្មោះ (Start Date)</th>
-                        <th className="py-3 px-4 w-24 text-right">តម្លៃ (Amount)</th>
+                        <th className="py-2.5 px-3 w-10 text-center">Nº</th>
+                        <th className="py-2.5 px-3 w-20">ID</th>
+                        <th className="py-2.5 px-3">ឈ្មោះសិស្ស (Full Name)</th>
+                        <th className="py-2.5 px-3 w-24">លេខវិក្កយបត្រ (Receipt)</th>
+                        <th className="py-2.5 px-3">វគ្គសិក្សា (Course)</th>
+                        <th className="py-2.5 px-3 w-24">ថ្ងៃចុះឈ្មោះ (Start Date)</th>
+                        <th className="py-2.5 px-3 min-w-[130px]">ការពិពណ៌នា (Description)</th>
+                        <th className="py-2.5 px-3 w-20 text-right">តម្លៃ (Amount)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 print:divide-gray-200">
@@ -971,7 +1076,7 @@ export default function PayrollCenter({
                           <React.Fragment key={group.courseName}>
                             {/* Course Category Sub-header Row */}
                             <tr className="course-subheading-row bg-slate-100 font-bold border-t-2 border-b border-slate-300 print-break-inside-avoid avoid-break avoid-break-after">
-                              <td colSpan={7} className="py-2.5 px-4 text-xs uppercase tracking-wider text-slate-800">
+                              <td colSpan={8} className="py-2.5 px-4 text-xs uppercase tracking-wider text-slate-800">
                                 <div className="flex items-center justify-between">
                                   <span className="font-extrabold text-slate-900 flex items-center gap-2">
                                     <span className="inline-block w-2 h-2 rounded-full bg-indigo-600 mr-0.5" />
@@ -989,7 +1094,7 @@ export default function PayrollCenter({
                               <React.Fragment key={studyGroup.groupName}>
                                 {/* Study Group Sub-header Row - Displayed ONLY ONCE per Class */}
                                 <tr className="group-subheading-row bg-gray-50 border-y border-gray-200 font-bold print-break-inside-avoid avoid-break avoid-break-after">
-                                  <td colSpan={7} className="py-2 px-4 text-xs text-gray-800 bg-gray-50">
+                                  <td colSpan={8} className="py-2 px-4 text-xs text-gray-800 bg-gray-50">
                                     <div className="flex items-center justify-between">
                                       <span className="font-bold text-gray-800 flex items-center gap-2">
                                         <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500" />
@@ -1011,16 +1116,16 @@ export default function PayrollCenter({
                                   
                                   const fullStudentInfo = students.find(s => s.student_id === student.student_id);
                                   const studentUsername = student.telegram_name || fullStudentInfo?.telegram_name || student.contact || fullStudentInfo?.contact;
-                                  const studentDescription = student.notes || fullStudentInfo?.notes;
+                                  const studentDescription = (student.notes || (student as any).description || fullStudentInfo?.notes || (fullStudentInfo as any)?.description || '').trim();
                                   const tgLink = getTelegramLink(student.contact || fullStudentInfo?.contact || '', student.telegram_name || fullStudentInfo?.telegram_name || studentUsername || '');
 
                                   return (
-                                    <tr key={student.student_id} className="hover:bg-slate-50/50 print-break-inside-avoid avoid-break">
-                                      <td className="py-3 px-4 text-center text-slate-400 font-medium">{studentIndex}</td>
-                                      <td className="py-3 px-4 font-mono font-bold text-indigo-600">{student.student_id}</td>
-                                      <td className="py-3 px-4">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                          <span className="font-medium text-gray-900 text-xs sm:text-sm">{student.full_name} ({student.gender})</span>
+                                    <tr key={student.student_id} className="hover:bg-slate-50/50 print-break-inside-avoid avoid-break border-b border-gray-100 print:border-gray-200">
+                                      <td className="py-2.5 px-3 text-center text-slate-400 font-medium">{studentIndex}</td>
+                                      <td className="py-2.5 px-3 font-mono font-bold text-indigo-600">{student.student_id}</td>
+                                      <td className="py-2.5 px-3">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className="font-semibold text-gray-900 text-xs sm:text-sm">{student.full_name} ({student.gender})</span>
                                           {isContinuingStudent(student) ? (
                                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
                                               <RotateCcw className="h-2 w-2" strokeWidth={2.5} />
@@ -1034,42 +1139,39 @@ export default function PayrollCenter({
                                           )}
                                         </div>
 
-                                        {/* Secondary Details: Username with Telegram icon & Description / Notes */}
-                                        {(studentUsername || studentDescription) && (
-                                          <div className="mt-1 space-y-0.5 text-xs text-gray-500 leading-tight">
-                                            {studentUsername && (
-                                              <div className="flex items-center gap-1 text-gray-500">
-                                                <span className="font-medium text-gray-400">Username:</span>
-                                                <span className="font-mono font-medium text-gray-600">
-                                                  {studentUsername}
-                                                </span>
-                                                {tgLink && (
-                                                  <a
-                                                    href={tgLink}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="inline-flex items-center justify-center text-sky-500 hover:text-sky-600 active:text-sky-700 transition-transform hover:scale-110 cursor-pointer p-0.5"
-                                                    title={`ឆាតទៅតេឡេក្រាម (Open Telegram): ${tgLink}`}
-                                                    aria-label={`Open Telegram chat with ${student.full_name}`}
-                                                  >
-                                                    <Send className="w-3 h-3 text-sky-500 hover:text-sky-600" />
-                                                  </a>
-                                                )}
-                                              </div>
-                                            )}
-                                            {studentDescription && (
-                                              <div className="flex items-start gap-1 text-gray-500">
-                                                <span className="font-medium text-gray-400 shrink-0">Description:</span>
-                                                <span className="text-gray-600 italic line-clamp-1">{studentDescription}</span>
-                                              </div>
+                                        {/* Telegram / Username */}
+                                        {studentUsername && (
+                                          <div className="mt-1 flex items-center gap-1 text-[11px] text-gray-500 leading-tight">
+                                            <span className="font-medium text-gray-400">Username:</span>
+                                            <span className="font-mono font-medium text-gray-600">
+                                              {studentUsername}
+                                            </span>
+                                            {tgLink && (
+                                              <a
+                                                href={tgLink}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center justify-center text-sky-500 hover:text-sky-600 active:text-sky-700 transition-transform hover:scale-110 cursor-pointer p-0.5"
+                                                title={`ឆាតទៅតេឡេក្រាម (Open Telegram): ${tgLink}`}
+                                                aria-label={`Open Telegram chat with ${student.full_name}`}
+                                              >
+                                                <Send className="w-3 h-3 text-sky-500 hover:text-sky-600" />
+                                              </a>
                                             )}
                                           </div>
                                         )}
                                       </td>
-                                      <td className="py-3 px-4 font-mono text-gray-500">{student.receipt_number}</td>
-                                      <td className="py-3 px-4 text-gray-700">{student.course}</td>
-                                      <td className="py-3 px-4 text-gray-500">{student.start_date}</td>
-                                      <td className="py-3 px-4 text-right font-bold text-emerald-600">${studentRate.toFixed(2)}</td>
+                                      <td className="py-2.5 px-3 font-mono text-gray-600">{student.receipt_number}</td>
+                                      <td className="py-2.5 px-3 text-gray-700">{student.course}</td>
+                                      <td className="py-2.5 px-3 text-gray-600 font-mono">{student.start_date}</td>
+                                      <td className="py-2.5 px-3 text-slate-700 print:text-black text-xs break-words whitespace-normal font-normal">
+                                        {studentDescription ? (
+                                          <span>{studentDescription}</span>
+                                        ) : (
+                                          <span className="text-slate-300 print:text-slate-400 italic text-[11px]">-</span>
+                                        )}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-right font-bold text-emerald-600 font-mono">${studentRate.toFixed(2)}</td>
                                     </tr>
                                   );
                                 })}
@@ -1322,6 +1424,7 @@ export default function PayrollCenter({
                   receipt_number: formData.get('receiptNumber') as string,
                   course: formData.get('course') as any,
                   start_date: formData.get('startDate') as string,
+                  notes: (formData.get('notes') as string || '').trim(),
                 };
                 handleSaveDraftEdit(updated);
               }} className="space-y-4">
@@ -1388,6 +1491,18 @@ export default function PayrollCenter({
                       defaultValue={editingDraftStudent.start_date}
                       required
                       className="w-full px-3 py-2 bg-slate-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                    />
+                  </div>
+
+                  {/* Notes / Description */}
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-gray-700">ការពិពណ៌នា / កំណត់ចំណាំ (Description / Notes)</label>
+                    <textarea
+                      name="notes"
+                      defaultValue={editingDraftStudent.notes || (editingDraftStudent as any).description || ''}
+                      rows={2}
+                      className="w-full px-3 py-2 bg-slate-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm resize-none"
+                      placeholder="ព័ត៌មានលម្អិតបន្ថែម ឬការពិពណ៌នា..."
                     />
                   </div>
                 </div>

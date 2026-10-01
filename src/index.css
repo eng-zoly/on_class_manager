@@ -220,6 +220,13 @@
     color-adjust: exact !important;
   }
 
+  #print-section td,
+  #print-section th {
+    overflow: visible !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+  }
+
   /* 7. Optimize table layout and pagination across all printed sections */
   tr, 
   .print-break-inside-avoid, 
