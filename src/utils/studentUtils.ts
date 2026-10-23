@@ -24,6 +24,42 @@ export function getDaysRemaining(endDateStr: string, referenceDateStr: string): 
 }
 
 /**
+ * Calculates student duration in days (e.g. from start_date to end_date).
+ * Defaults to 30 days if dates are invalid or duration <= 0.
+ */
+export function calculateStudentDurationDays(startDateStr?: string | null, endDateStr?: string | null): number {
+  if (!startDateStr || !endDateStr) return 30;
+  const d1 = new Date(startDateStr);
+  const d2 = new Date(endDateStr);
+  d1.setHours(0, 0, 0, 0);
+  d2.setHours(0, 0, 0, 0);
+  const diffTime = d2.getTime() - d1.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays > 0 ? diffDays : 30;
+}
+
+/**
+ * Gets daily teacher fee rate for continuing students:
+ * - Computer Basic Office: 15 / 44 = 0.35 ($15 full price / 44 standard days)
+ * - Advanced Excel: 25 / 44 = 0.57 ($25 full price / 44 standard days)
+ */
+export function getContinuingDailyRate(courseName: string): number {
+  const lower = (courseName || '').toLowerCase();
+  if (lower.includes('excel')) {
+    return 0.57; // 25 / 44 = 0.57
+  }
+  return 0.35; // 15 / 44 = 0.35
+}
+
+/**
+ * Calculates continuing student teacher fee based on study duration and course.
+ */
+export function calculateContinuingStudentFee(durationDays: number, courseName: string): number {
+  const dailyRate = getContinuingDailyRate(courseName);
+  return Math.round(durationDays * dailyRate * 100) / 100;
+}
+
+/**
  * Derives a student's status.
  */
 export function getStudentStatus(endDateStr: string, referenceDateStr: string, examResult?: string): StudentStatus {

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Student, PayrollReport } from '../types';
-import { formatReadableDate, getTelegramLink } from '../utils/studentUtils';
+import { formatReadableDate, getTelegramLink, calculateStudentDurationDays, getContinuingDailyRate, calculateContinuingStudentFee } from '../utils/studentUtils';
 import { triggerPrintWithDynamicTitle, formatDateForFilename, sanitizeFilename } from '../utils/printUtils';
 import { DollarSign, Calendar, FileText, CheckCircle2, ChevronDown, ChevronUp, AlertCircle, TrendingUp, Download, Printer, Search, X, Copy, Check, Edit, RotateCcw, AlertTriangle, Trash2, Send, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -67,17 +67,55 @@ export default function PayrollCenter({
     return false;
   };
 
-  // Group and sort students in the printing report by course category and study group
-  const groupedPrintStudents = useMemo(() => {
-    if (!printingReport || !printingReport.students) return [];
+  // Helper to compute fee calculation details for any student
+  const getStudentFeeInfo = (student: Student | any) => {
+    const isContinuing = isContinuingStudent(student);
+    const courseName = student.course || '';
+    const fullMaster = students.find(s => s.student_id === student.student_id);
+    const startDate = student.start_date || fullMaster?.start_date || '';
+    const endDate = student.end_date || fullMaster?.end_date || '';
+    const durationDays = (typeof student.duration_days === 'number' && student.duration_days > 0)
+      ? student.duration_days
+      : calculateStudentDurationDays(startDate, endDate);
+    const dailyRate = getContinuingDailyRate(courseName);
 
-    // Course order: Computer Basic Office, Advanced Excel, then any others alphabetically
+    if (isContinuing) {
+      const fee = (typeof student.fee === 'number' && !isNaN(student.fee))
+        ? student.fee
+        : calculateContinuingStudentFee(durationDays, courseName);
+      return {
+        fee,
+        isContinuing: true,
+        durationDays,
+        dailyRate,
+        startDate,
+        endDate,
+        formulaStr: `${durationDays} ថ្ងៃ (x $${dailyRate.toFixed(2)}/ថ្ងៃ)`
+      };
+    } else {
+      let baseRate = 7.00;
+      if (courseName === 'Advanced Excel') {
+        baseRate = 11.00;
+      } else if (courseConfig && courseConfig[courseName]?.rate !== undefined) {
+        baseRate = Number(courseConfig[courseName].rate);
+      }
+      const fee = (typeof student.fee === 'number' && !isNaN(student.fee)) ? student.fee : baseRate;
+      return {
+        fee,
+        isContinuing: false,
+        durationDays,
+        dailyRate: 0,
+        startDate,
+        endDate,
+        formulaStr: `អត្រាពេញ ($${fee.toFixed(2)})`
+      };
+    }
+  };
+
+  // Group and sort students in printing report by course category and study group
+  const buildCourseGroupList = (studentList: any[]) => {
     const coursePriority = ['Computer Basic Office', 'Advanced Excel'];
-    
-    // Get unique courses
-    const courses: string[] = Array.from(new Set<string>(printingReport.students.map((s: Student) => s.course || 'Other')));
-    
-    // Sort courses by priority
+    const courses: string[] = Array.from(new Set<string>(studentList.map(s => s.course || 'Other')));
     courses.sort((a: string, b: string) => {
       const idxA = coursePriority.indexOf(a);
       const idxB = coursePriority.indexOf(b);
@@ -88,16 +126,14 @@ export default function PayrollCenter({
     });
 
     return courses.map(courseName => {
-      const courseStudents = printingReport.students
-        .filter(s => (s.course || 'Other') === courseName);
-      
+      const courseStudents = studentList.filter(s => (s.course || 'Other') === courseName);
       const count = courseStudents.length;
-      const rate = courseName === 'Advanced Excel' 
-        ? printingReport.rate_advanced 
-        : (courseName === 'Computer Basic Office' 
-            ? printingReport.rate_office 
-            : (courseConfig?.[courseName]?.rate || 7.00));
-      const subtotal = count * rate;
+      let subtotal = 0;
+      courseStudents.forEach(s => {
+        const feeInfo = getStudentFeeInfo(s);
+        subtotal += feeInfo.fee;
+      });
+      subtotal = Math.round(subtotal * 100) / 100;
 
       // Group students by study group / class name
       const groupMap: Record<string, typeof courseStudents> = {};
@@ -110,7 +146,7 @@ export default function PayrollCenter({
         groupMap[resolvedGroup].push(s);
       });
 
-      // Sort study groups alphabetically, with students inside sorted chronologically or by ID
+      // Sort study groups alphabetically
       const studyGroups = Object.keys(groupMap).sort().map(groupName => {
         const sortedStudents = groupMap[groupName].sort((a, b) => {
           if (a.start_date && b.start_date && a.start_date !== b.start_date) {
@@ -129,11 +165,58 @@ export default function PayrollCenter({
         students: courseStudents,
         studyGroups,
         count,
-        rate,
         subtotal
       };
     }).filter(g => g.students.length > 0);
-  }, [printingReport, courseConfig, students]);
+  };
+
+  // Print analysis separated into New Students and Continuing Students
+  const printAnalysis = useMemo(() => {
+    if (!printingReport || !printingReport.students) {
+      return {
+        newGroups: [],
+        continuingGroups: [],
+        countNew: 0,
+        totalNew: 0,
+        countContinuing: 0,
+        totalContinuing: 0,
+        grandTotal: 0
+      };
+    }
+
+    const rawNew: any[] = [];
+    const rawContinuing: any[] = [];
+    let calcTotalNew = 0;
+    let calcTotalContinuing = 0;
+
+    printingReport.students.forEach(s => {
+      const feeInfo = getStudentFeeInfo(s);
+      if (feeInfo.isContinuing) {
+        rawContinuing.push(s);
+        calcTotalContinuing += feeInfo.fee;
+      } else {
+        rawNew.push(s);
+        calcTotalNew += feeInfo.fee;
+      }
+    });
+
+    calcTotalNew = Math.round(calcTotalNew * 100) / 100;
+    calcTotalContinuing = Math.round(calcTotalContinuing * 100) / 100;
+
+    const totalNew = printingReport.total_payment_new !== undefined ? printingReport.total_payment_new : calcTotalNew;
+    const totalContinuing = printingReport.total_payment_continuing !== undefined ? printingReport.total_payment_continuing : calcTotalContinuing;
+    const grandTotal = printingReport.total_payment !== undefined ? printingReport.total_payment : Math.round((totalNew + totalContinuing) * 100) / 100;
+
+    return {
+      newGroups: buildCourseGroupList(rawNew),
+      continuingGroups: buildCourseGroupList(rawContinuing),
+      countNew: rawNew.length,
+      totalNew,
+      countContinuing: rawContinuing.length,
+      totalContinuing,
+      grandTotal
+    };
+  }, [printingReport, students, courseConfig]);
 
   // Draft editing, print warning, and undo/redo states
   const [editingDraftStudent, setEditingDraftStudent] = useState<Student | null>(null);
@@ -235,7 +318,6 @@ export default function PayrollCenter({
 
   // Copy plain text format report to clipboard helper
   const handleCopyReportText = (report: PayrollReport) => {
-    const totalStudents = report.student_count_office + report.student_count_advanced;
     let text = `==================================================\n`;
     text += `របាយការណ៍ប្រាក់កម្រៃគ្រូ (Teacher Payroll Report)\n`;
     text += `==================================================\n`;
@@ -243,53 +325,53 @@ export default function PayrollCenter({
     text += `សម្រាប់ខែ (Month): ${report.report_month}\n`;
     text += `ថ្ងៃបង្កើត (Generated Date): ${report.generated_date}\n`;
     text += `ស្ថានភាព (Status): បានទូទាត់រួច (Paid)\n\n`;
-    
-    text += `សង្ខេបកម្រៃតាមវគ្គ (Summary Breakdown):\n`;
-    if (report.student_count_office > 0) {
-      text += `- Computer Basic Office: ${report.student_count_office} នាក់ x $${report.rate_office.toFixed(2)} = $${(report.student_count_office * report.rate_office).toFixed(2)}\n`;
-    }
-    if (report.student_count_advanced > 0) {
-      text += `- Advanced Excel: ${report.student_count_advanced} នាក់ x $${report.rate_advanced.toFixed(2)} = $${(report.student_count_advanced * report.rate_advanced).toFixed(2)}\n`;
-    }
-    
-    // Custom courses
-    if (courseConfig) {
-      Object.keys(courseConfig).filter(k => k !== 'Computer Basic Office' && k !== 'Advanced Excel').forEach(courseName => {
-        const studentsInCourse = report.students.filter(s => s.course === courseName);
-        if (studentsInCourse.length > 0) {
-          const rate = courseConfig[courseName]?.rate || 7.00;
-          text += `- ${courseName}: ${studentsInCourse.length} នាក់ x $${rate.toFixed(2)} = $${(studentsInCourse.length * rate).toFixed(2)}\n`;
-        }
-      });
-    }
 
-    text += `ប្រាក់កម្រៃសរុប (Total Payment): $${report.total_payment.toFixed(2)}\n\n`;
+    const newStudents: any[] = [];
+    const continuingStudents: any[] = [];
+    let sumNew = 0;
+    let sumCont = 0;
 
-    text += `បញ្ជីឈ្មោះសិស្សលម្អិតតាមវគ្គសិក្សា (Detailed Student List by Course):\n`;
-    const coursePriority = ['Computer Basic Office', 'Advanced Excel'];
-    const courses: string[] = Array.from(new Set<string>(report.students.map((s: Student) => s.course || 'Other')));
-    courses.sort((a: string, b: string) => {
-      const idxA = coursePriority.indexOf(a);
-      const idxB = coursePriority.indexOf(b);
-      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-      if (idxA !== -1) return -1;
-      if (idxB !== -1) return 1;
-      return a.localeCompare(b);
+    report.students.forEach(s => {
+      const feeInfo = getStudentFeeInfo(s);
+      if (feeInfo.isContinuing) {
+        continuingStudents.push({ ...s, feeInfo });
+        sumCont += feeInfo.fee;
+      } else {
+        newStudents.push({ ...s, feeInfo });
+        sumNew += feeInfo.fee;
+      }
     });
 
-    courses.forEach(courseName => {
-      const courseStudents = report.students.filter(s => (s.course || 'Other') === courseName);
-      if (courseStudents.length === 0) return;
-      text += `\n[ វគ្គសិក្សា៖ ${courseName} (${courseStudents.length} នាក់) ]\n`;
-      courseStudents.forEach((s, idx) => {
+    sumNew = report.total_payment_new !== undefined ? report.total_payment_new : Math.round(sumNew * 100) / 100;
+    sumCont = report.total_payment_continuing !== undefined ? report.total_payment_continuing : Math.round(sumCont * 100) / 100;
+    const grandSum = report.total_payment !== undefined ? report.total_payment : Math.round((sumNew + sumCont) * 100) / 100;
+
+    text += `សង្ខេបកម្រៃគ្រូ (Summary):\n`;
+    text += `- ប្រាក់កម្រៃគ្រូសិស្សថ្មី សរុប (Total): $${sumNew.toFixed(2)} (${newStudents.length} នាក់)\n`;
+    text += `- ប្រាក់កម្រៃគ្រូសម្រាប់សិស្សបន្ត សរុប (Total): $${sumCont.toFixed(2)} (${continuingStudents.length} នាក់)\n`;
+    text += `- ប្រាក់កម្រៃគ្រូសរុបរួម (Total): $${grandSum.toFixed(2)} (${report.students.length} នាក់)\n\n`;
+
+    if (newStudents.length > 0) {
+      text += `[ ១. បញ្ជីឈ្មោះសិស្សថ្មី (${newStudents.length} នាក់) ]\n`;
+      newStudents.forEach((s, idx) => {
         const fullStudentInfo = students.find(master => master.student_id === s.student_id);
         const desc = (s.notes || (s as any).description || fullStudentInfo?.notes || (fullStudentInfo as any)?.description || '').trim();
-        const typeBadge = isContinuingStudent(s) ? '[សិក្សាបន្ត]' : '[សិស្សថ្មី]';
-        text += `${idx + 1}. [${s.student_id}] ${s.full_name} (${s.gender}) ${typeBadge} - វិក្កយបត្រ៖ ${s.receipt_number} - ថ្ងៃចូលរៀន៖ ${s.start_date}${desc ? ` - Description: ${desc}` : ''}\n`;
+        text += `${idx + 1}. [${s.student_id}] ${s.full_name} (${s.gender}) - វគ្គ៖ ${s.course} - វិក្កយបត្រ៖ ${s.receipt_number} - ថ្ងៃចូល៖ ${s.start_date} - កម្រៃ៖ $${s.feeInfo.fee.toFixed(2)}${desc ? ` - Description: ${desc}` : ''}\n`;
       });
-    });
+      text += `\n`;
+    }
+
+    if (continuingStudents.length > 0) {
+      text += `[ ២. បញ្ជីឈ្មោះសិស្សសិក្សាបន្ត (${continuingStudents.length} នាក់) ]\n`;
+      continuingStudents.forEach((s, idx) => {
+        const fullStudentInfo = students.find(master => master.student_id === s.student_id);
+        const desc = (s.notes || (s as any).description || fullStudentInfo?.notes || (fullStudentInfo as any)?.description || '').trim();
+        text += `${idx + 1}. [${s.student_id}] ${s.full_name} (${s.gender}) - វគ្គ៖ ${s.course} - វិក្កយបត្រ៖ ${s.receipt_number} - រយៈពេល៖ ${s.feeInfo.durationDays} ថ្ងៃ ($${s.feeInfo.dailyRate.toFixed(2)}/ថ្ងៃ) - កាលបរិច្ឆេទ៖ ${s.start_date} ដល់ ${s.end_date || s.feeInfo.endDate || ''} - កម្រៃ៖ $${s.feeInfo.fee.toFixed(2)}${desc ? ` - Description: ${desc}` : ''}\n`;
+      });
+      text += `\n`;
+    }
     
-    text += `\n==================================================\n`;
+    text += `==================================================\n`;
     
     navigator.clipboard.writeText(text);
     alert("ចម្លងរបាយការណ៍ទៅកាន់ Clipboard រួចរាល់! (Report text copied to clipboard successfully!)");
@@ -309,14 +391,31 @@ export default function PayrollCenter({
 
   // Compute draft calculations dynamically for all courses in courseConfig
   const draftMetrics = useMemo(() => {
-    const courseBreakdown: Record<string, { count: number; rate: number; total: number; students: Student[] }> = {};
-    let grandTotal = 0;
+    let countNew = 0;
+    let totalNew = 0;
+    let countContinuing = 0;
+    let totalContinuing = 0;
+
+    const courseBreakdown: Record<string, {
+      count: number;
+      countNew: number;
+      countContinuing: number;
+      totalNew: number;
+      totalContinuing: number;
+      rate: number;
+      total: number;
+      students: Student[];
+    }> = {};
 
     // Initialize map with current courses
     if (courseConfig) {
       Object.keys(courseConfig).forEach(courseName => {
         courseBreakdown[courseName] = {
           count: 0,
+          countNew: 0,
+          countContinuing: 0,
+          totalNew: 0,
+          totalContinuing: 0,
           rate: Number(courseConfig[courseName].rate),
           total: 0,
           students: []
@@ -331,6 +430,10 @@ export default function PayrollCenter({
         // Fallback for custom or old courses not in active config
         courseBreakdown[courseName] = {
           count: 0,
+          countNew: 0,
+          countContinuing: 0,
+          totalNew: 0,
+          totalContinuing: 0,
           rate: student.course.includes('Excel') ? 11.00 : 7.00,
           total: 0,
           students: []
@@ -339,19 +442,35 @@ export default function PayrollCenter({
       const item = courseBreakdown[courseName];
       item.count += 1;
       item.students.push(student);
-      item.total = item.count * item.rate;
+
+      const feeInfo = getStudentFeeInfo(student);
+      if (feeInfo.isContinuing) {
+        countContinuing += 1;
+        totalContinuing += feeInfo.fee;
+        item.countContinuing += 1;
+        item.totalContinuing += feeInfo.fee;
+      } else {
+        countNew += 1;
+        totalNew += feeInfo.fee;
+        item.countNew += 1;
+        item.totalNew += feeInfo.fee;
+      }
+      item.total += feeInfo.fee;
     });
 
-    // Calculate grand total
-    Object.values(courseBreakdown).forEach(item => {
-      grandTotal += item.total;
-    });
+    totalNew = Math.round(totalNew * 100) / 100;
+    totalContinuing = Math.round(totalContinuing * 100) / 100;
+    const grandTotal = Math.round((totalNew + totalContinuing) * 100) / 100;
 
     return {
       courseBreakdown,
+      countNew,
+      totalNew,
+      countContinuing,
+      totalContinuing,
       grandTotal
     };
-  }, [draftStudents, courseConfig]);
+  }, [draftStudents, courseConfig, students]);
 
   // Submit and Freeze report
   const handleFreezeReport = () => {
@@ -373,23 +492,33 @@ export default function PayrollCenter({
       generated_date: new Date().toISOString().replace('T', ' ').substring(0, 16),
       student_count_office: draftMetrics.courseBreakdown['Computer Basic Office']?.count || 0,
       student_count_advanced: draftMetrics.courseBreakdown['Advanced Excel']?.count || 0,
+      student_count_new: draftMetrics.countNew,
+      student_count_continuing: draftMetrics.countContinuing,
       rate_office: draftMetrics.courseBreakdown['Computer Basic Office']?.rate || 7.00,
       rate_advanced: draftMetrics.courseBreakdown['Advanced Excel']?.rate || 11.00,
+      total_payment_new: draftMetrics.totalNew,
+      total_payment_continuing: draftMetrics.totalContinuing,
       total_payment: draftMetrics.grandTotal,
-      students: draftStudents.map(s => ({
-        student_id: s.student_id,
-        full_name: s.full_name,
-        gender: s.gender,
-        receipt_number: s.receipt_number,
-        course: s.course,
-        start_date: s.start_date,
-        student_type: isContinuingStudent(s) ? 'Continuing' : 'New',
-        pending_renewal_fee: s.pending_renewal_fee,
-        telegram_name: s.telegram_name || '',
-        contact: s.contact || '',
-        notes: (s.notes || (s as any).description || '').trim(),
-        group: s.group || ''
-      }))
+      students: draftStudents.map(s => {
+        const feeInfo = getStudentFeeInfo(s);
+        return {
+          student_id: s.student_id,
+          full_name: s.full_name,
+          gender: s.gender,
+          receipt_number: s.receipt_number,
+          course: s.course,
+          start_date: s.start_date,
+          end_date: s.end_date,
+          duration_days: feeInfo.durationDays,
+          fee: feeInfo.fee,
+          student_type: feeInfo.isContinuing ? 'Continuing' : 'New',
+          pending_renewal_fee: s.pending_renewal_fee,
+          telegram_name: s.telegram_name || '',
+          contact: s.contact || '',
+          notes: (s.notes || (s as any).description || '').trim(),
+          group: s.group || ''
+        };
+      })
     };
 
     onSubmitReport(newReport);
@@ -419,14 +548,15 @@ export default function PayrollCenter({
   // Export reported list to CSV simulation
   const handleExportCSV = (report: PayrollReport) => {
     let csvContent = 'data:text/csv;charset=utf-8,';
-    csvContent += 'Student ID,Full Name,Gender,Type,Receipt Number,Course,Enrollment Start Date,Username,Description\n';
+    csvContent += 'Student ID,Full Name,Gender,Type,Receipt Number,Course,Start Date,End Date,Duration Days,Daily Rate,Fee,Username,Description\n';
     
     report.students.forEach(s => {
-      const typeText = isContinuingStudent(s) ? 'Continuing' : 'New';
+      const feeInfo = getStudentFeeInfo(s);
+      const typeText = feeInfo.isContinuing ? 'Continuing' : 'New';
       const fullStudentInfo = students.find(stud => stud.student_id === s.student_id);
       const username = s.telegram_name || fullStudentInfo?.telegram_name || s.contact || fullStudentInfo?.contact || '';
       const notes = (s.notes || (s as any).description || fullStudentInfo?.notes || (fullStudentInfo as any)?.description || '').trim();
-      csvContent += `"${s.student_id}","${s.full_name}","${s.gender}","${typeText}","${s.receipt_number}","${s.course}","${s.start_date}","${username}","${notes.replace(/"/g, '""')}"\n`;
+      csvContent += `"${s.student_id}","${s.full_name}","${s.gender}","${typeText}","${s.receipt_number}","${s.course}","${s.start_date || feeInfo.startDate}","${s.end_date || feeInfo.endDate || ''}","${feeInfo.durationDays}","${feeInfo.dailyRate}","${feeInfo.fee.toFixed(2)}","${username}","${notes.replace(/"/g, '""')}"\n`;
     });
 
     const encodedUri = encodeURI(csvContent);
@@ -478,23 +608,33 @@ export default function PayrollCenter({
                         generated_date: new Date().toISOString().replace('T', ' ').substring(0, 16),
                         student_count_office: draftMetrics.courseBreakdown['Computer Basic Office']?.count || 0,
                         student_count_advanced: draftMetrics.courseBreakdown['Advanced Excel']?.count || 0,
+                        student_count_new: draftMetrics.countNew,
+                        student_count_continuing: draftMetrics.countContinuing,
                         rate_office: draftMetrics.courseBreakdown['Computer Basic Office']?.rate || 7.00,
                         rate_advanced: draftMetrics.courseBreakdown['Advanced Excel']?.rate || 11.00,
+                        total_payment_new: draftMetrics.totalNew,
+                        total_payment_continuing: draftMetrics.totalContinuing,
                         total_payment: draftMetrics.grandTotal,
-                        students: draftStudents.map(s => ({
-                          student_id: s.student_id,
-                          full_name: s.full_name,
-                          gender: s.gender,
-                          receipt_number: s.receipt_number,
-                          course: s.course,
-                          start_date: s.start_date,
-                          student_type: isContinuingStudent(s) ? 'Continuing' : 'New',
-                          pending_renewal_fee: s.pending_renewal_fee,
-                          telegram_name: s.telegram_name || '',
-                          contact: s.contact || '',
-                          notes: (s.notes || (s as any).description || '').trim(),
-                          group: s.group || ''
-                        }))
+                        students: draftStudents.map(s => {
+                          const feeInfo = getStudentFeeInfo(s);
+                          return {
+                            student_id: s.student_id,
+                            full_name: s.full_name,
+                            gender: s.gender,
+                            receipt_number: s.receipt_number,
+                            course: s.course,
+                            start_date: s.start_date,
+                            end_date: s.end_date,
+                            duration_days: feeInfo.durationDays,
+                            fee: feeInfo.fee,
+                            student_type: feeInfo.isContinuing ? 'Continuing' : 'New',
+                            pending_renewal_fee: s.pending_renewal_fee,
+                            telegram_name: s.telegram_name || '',
+                            contact: s.contact || '',
+                            notes: (s.notes || (s as any).description || '').trim(),
+                            group: s.group || ''
+                          };
+                        })
                       };
                       setPrintingReport(draftReport);
                     } else {
@@ -518,26 +658,63 @@ export default function PayrollCenter({
               </div>
             </div>
 
-            {/* Calculations metrics summary */}
+            {/* Calculations metrics summary cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Object.keys(draftMetrics.courseBreakdown).map(courseName => {
-                const item = draftMetrics.courseBreakdown[courseName];
-                if (item.count === 0) return null; // Only show active items in draft calculations to keep UI clean
-                return (
-                  <div key={courseName} className="bg-indigo-50/40 border border-indigo-100 p-4 rounded-xl text-center">
-                    <p className="text-xs font-semibold text-indigo-900 truncate" title={courseName}>{courseName}</p>
-                    <p className="text-2xl font-bold text-indigo-600 mt-1">{item.count} នាក់</p>
-                    <p className="text-[10px] text-indigo-500 mt-1">អត្រា៖ ${item.rate.toFixed(2)} | សរុប៖ ${item.total.toFixed(2)}</p>
-                  </div>
-                );
-              })}
-
-              <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl text-center flex flex-col justify-between">
+              {/* Card 1: New Students Total */}
+              <div className="bg-sky-50/70 border border-sky-100 p-4 rounded-xl flex flex-col justify-between">
                 <div>
-                  <p className="text-xs font-bold text-emerald-900">ប្រាក់កម្រៃគ្រូសរុប (Total)</p>
-                  <p className="text-3xl font-extrabold text-emerald-600 mt-1">${draftMetrics.grandTotal.toFixed(2)}</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold text-sky-900">ប្រាក់កម្រៃគ្រូសិស្សថ្មី សរុប (Total)</p>
+                    <span className="text-[10px] font-bold bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full">
+                      {draftMetrics.countNew} នាក់
+                    </span>
+                  </div>
+                  <p className="text-2xl sm:text-3xl font-extrabold text-sky-600 mt-2">
+                    ${draftMetrics.totalNew.toFixed(2)}
+                  </p>
                 </div>
-                <p className="text-[9px] text-emerald-600 font-medium mt-1">* គិតតែលើសិស្ស New និងសិស្ស Renewed ដែលបានកំណត់គិតប្រាក់កម្រៃប៉ុណ្ណោះ</p>
+                <div className="pt-2 mt-2 border-t border-sky-100/80 text-[10.5px] text-sky-700 font-medium flex items-center justify-between">
+                  <span>Basic: {draftMetrics.courseBreakdown['Computer Basic Office']?.countNew || 0} នាក់ ($7)</span>
+                  <span>Excel: {draftMetrics.courseBreakdown['Advanced Excel']?.countNew || 0} នាក់ ($11)</span>
+                </div>
+              </div>
+
+              {/* Card 2: Continuing Students Total */}
+              <div className="bg-indigo-50/70 border border-indigo-100 p-4 rounded-xl flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold text-indigo-900">ប្រាក់កម្រៃគ្រូសម្រាប់សិស្សបន្ត សរុប (Total)</p>
+                    <span className="text-[10px] font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full">
+                      {draftMetrics.countContinuing} នាក់
+                    </span>
+                  </div>
+                  <p className="text-2xl sm:text-3xl font-extrabold text-indigo-600 mt-2">
+                    ${draftMetrics.totalContinuing.toFixed(2)}
+                  </p>
+                </div>
+                <div className="pt-2 mt-2 border-t border-indigo-100/80 text-[10.5px] text-indigo-700 font-medium flex items-center justify-between">
+                  <span>Basic ($0.35/ថ្ងៃ)</span>
+                  <span>Excel ($0.57/ថ្ងៃ)</span>
+                  <span className="italic">*តាមរយៈពេល</span>
+                </div>
+              </div>
+
+              {/* Card 3: Grand Total */}
+              <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl flex flex-col justify-between sm:col-span-2 lg:col-span-1">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold text-emerald-900">ប្រាក់កម្រៃគ្រូសរុបរួម (Total)</p>
+                    <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                      {draftStudents.length} នាក់
+                    </span>
+                  </div>
+                  <p className="text-3xl font-extrabold text-emerald-600 mt-2">
+                    ${draftMetrics.grandTotal.toFixed(2)}
+                  </p>
+                </div>
+                <p className="text-[10px] text-emerald-700 font-medium mt-2 pt-2 border-t border-emerald-100">
+                  សរុបរួមសិស្សថ្មី ({draftMetrics.countNew}) និងសិស្សបន្ត ({draftMetrics.countContinuing})
+                </p>
               </div>
             </div>
 
@@ -601,86 +778,116 @@ export default function PayrollCenter({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {draftStudents.map(student => (
-                        <tr key={student.student_id} className="hover:bg-slate-50 transition-colors">
-                          <td className="py-3 px-4 font-mono font-bold text-indigo-600">{student.student_id}</td>
-                          <td className="py-3 px-4 font-semibold text-gray-800">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-medium text-gray-900 text-xs sm:text-sm">{student.full_name} ({student.gender})</span>
-                              {isContinuingStudent(student) ? (
-                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
-                                  <RotateCcw className="h-2.5 w-2.5" strokeWidth={2.5} />
-                                  <span>សិក្សាបន្ត (CONT)</span>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                  <Sparkles className="h-2.5 w-2.5" strokeWidth={2.5} />
-                                  <span>សិស្សថ្មី (NEW)</span>
-                                </span>
-                              )}
-                            </div>
-                            {(student.telegram_name || student.contact || student.notes) && (() => {
-                              const draftTgLink = getTelegramLink(student.contact || '', student.telegram_name || '');
-                              const draftUsername = student.telegram_name || student.contact;
-                              return (
-                                <div className="mt-1 space-y-0.5 text-xs font-normal leading-tight text-gray-500">
-                                  {draftUsername && (
-                                    <div className="flex items-center gap-1 text-gray-500">
-                                      <span className="font-medium text-gray-400">Username:</span>
-                                      <span className="font-mono text-gray-600 font-medium">
-                                        {draftUsername}
-                                      </span>
-                                      {draftTgLink && (
-                                        <a
-                                          href={draftTgLink}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="inline-flex items-center justify-center text-sky-500 hover:text-sky-600 active:text-sky-700 hover:scale-110 transition-transform cursor-pointer p-0.5"
-                                          title={`ឆាតទៅតេឡេក្រាម (Open Telegram): ${draftTgLink}`}
-                                          aria-label={`Open Telegram chat with ${student.full_name}`}
-                                        >
-                                          <Send className="w-3 h-3 text-sky-500 hover:text-sky-600" />
-                                        </a>
-                                      )}
-                                    </div>
+                      {draftStudents.map(student => {
+                        const feeInfo = getStudentFeeInfo(student);
+                        return (
+                          <tr key={student.student_id} className="hover:bg-slate-50 transition-colors">
+                            <td className="py-3 px-4 font-mono font-bold text-indigo-600">{student.student_id}</td>
+                            <td className="py-3 px-4 font-semibold text-gray-800">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-medium text-gray-900 text-xs sm:text-sm">{student.full_name} ({student.gender})</span>
+                                {feeInfo.isContinuing ? (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                                    <RotateCcw className="h-2.5 w-2.5" strokeWidth={2.5} />
+                                    <span>សិក្សាបន្ត (CONT)</span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                    <Sparkles className="h-2.5 w-2.5" strokeWidth={2.5} />
+                                    <span>សិស្សថ្មី (NEW)</span>
+                                  </span>
+                                )}
+                              </div>
+                              {(student.telegram_name || student.contact || student.notes || (student as any).description) && (() => {
+                                const draftTgLink = getTelegramLink(student.contact || '', student.telegram_name || '');
+                                const draftUsername = student.telegram_name || student.contact;
+                                const draftDesc = (student.notes || (student as any).description || '').trim();
+                                return (
+                                  <div className="mt-1 space-y-0.5 text-xs font-normal leading-tight text-gray-500">
+                                    {draftUsername && (
+                                      <div className="flex items-center gap-1 text-gray-500">
+                                        <span className="font-medium text-gray-400">Username:</span>
+                                        <span className="font-mono text-gray-600 font-medium">
+                                          {draftUsername}
+                                        </span>
+                                        {draftTgLink && (
+                                          <a
+                                            href={draftTgLink}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center justify-center text-sky-500 hover:text-sky-600 active:text-sky-700 hover:scale-110 transition-transform cursor-pointer p-0.5"
+                                            title={`ឆាតទៅតេឡេក្រាម (Open Telegram): ${draftTgLink}`}
+                                            aria-label={`Open Telegram chat with ${student.full_name}`}
+                                          >
+                                            <Send className="w-3 h-3 text-sky-500 hover:text-sky-600" />
+                                          </a>
+                                        )}
+                                      </div>
+                                    )}
+                                    {draftDesc && (
+                                      <div className="flex items-start gap-1 text-gray-500">
+                                        <span className="font-medium text-gray-400 shrink-0">Description:</span>
+                                        <span className="text-gray-600 italic break-words">{draftDesc}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                                feeInfo.isContinuing 
+                                  ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' 
+                                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              }`}>
+                                {feeInfo.isContinuing ? 'សិស្សបន្ត (Renewed)' : 'សិស្សថ្មី (New)'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 font-mono text-gray-500">{student.receipt_number}</td>
+                            <td className="py-3 px-4 font-medium text-gray-700">{student.course}</td>
+                            <td className="py-3 px-4 text-gray-500 text-xs">
+                              {feeInfo.isContinuing ? (
+                                <div>
+                                  <span className="font-mono">{student.start_date}</span>
+                                  {student.end_date && (
+                                    <span className="block text-[10px] text-gray-400 font-mono">ដល់ {student.end_date}</span>
                                   )}
-                                  {(student.notes || (student as any).description) && (
-                                    <div className="flex items-start gap-1 text-gray-500">
-                                      <span className="font-medium text-gray-400 shrink-0">Description:</span>
-                                      <span className="text-gray-600 italic break-words">{student.notes || (student as any).description}</span>
-                                    </div>
-                                  )}
+                                  <span className="inline-block mt-0.5 text-[9.5px] font-bold text-indigo-600 bg-indigo-50 px-1 rounded">
+                                    {feeInfo.durationDays} ថ្ងៃ
+                                  </span>
                                 </div>
-                              );
-                            })()}
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                              isContinuingStudent(student) 
-                                ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' 
-                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            }`}>
-                              {isContinuingStudent(student) ? 'សិស្សបន្ត (Renewed)' : 'សិស្សថ្មី (New)'}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 font-mono text-gray-500">{student.receipt_number}</td>
-                          <td className="py-3 px-4 font-medium text-gray-700">{student.course}</td>
-                          <td className="py-3 px-4 text-gray-500">{student.start_date}</td>
-                          <td className="py-3 px-4 text-right font-bold text-emerald-600">
-                            ${(courseConfig[student.course]?.rate || 7.00).toFixed(2)}
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            <button
-                              type="button"
-                              onClick={() => setEditingDraftStudent(student)}
-                              className="p-1 hover:bg-indigo-50 rounded text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer inline-flex items-center"
-                              title="កែសម្រួលទិន្នន័យ (Edit Student)"
-                            >
-                              <Edit className="h-3.5 w-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                              ) : (
+                                <span className="font-mono">{student.start_date}</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              {feeInfo.isContinuing ? (
+                                <div>
+                                  <span className="font-bold text-indigo-600 font-mono text-sm">${feeInfo.fee.toFixed(2)}</span>
+                                  <span className="block text-[9.5px] text-indigo-500 font-mono">
+                                    {feeInfo.durationDays} ថ្ងៃ &times; ${feeInfo.dailyRate.toFixed(2)}/ថ្ងៃ
+                                  </span>
+                                </div>
+                              ) : (
+                                <div>
+                                  <span className="font-bold text-emerald-600 font-mono text-sm">${feeInfo.fee.toFixed(2)}</span>
+                                  <span className="block text-[9.5px] text-gray-400">អត្រាពេញ</span>
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <button
+                                type="button"
+                                onClick={() => setEditingDraftStudent(student)}
+                                className="p-1 hover:bg-indigo-50 rounded text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer inline-flex items-center"
+                                title="កែសម្រួលទិន្នន័យ (Edit Student)"
+                              >
+                                <Edit className="h-3.5 w-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -704,23 +911,33 @@ export default function PayrollCenter({
                           generated_date: new Date().toISOString().replace('T', ' ').substring(0, 16),
                           student_count_office: draftMetrics.courseBreakdown['Computer Basic Office']?.count || 0,
                           student_count_advanced: draftMetrics.courseBreakdown['Advanced Excel']?.count || 0,
+                          student_count_new: draftMetrics.countNew,
+                          student_count_continuing: draftMetrics.countContinuing,
                           rate_office: draftMetrics.courseBreakdown['Computer Basic Office']?.rate || 7.00,
                           rate_advanced: draftMetrics.courseBreakdown['Advanced Excel']?.rate || 11.00,
+                          total_payment_new: draftMetrics.totalNew,
+                          total_payment_continuing: draftMetrics.totalContinuing,
                           total_payment: draftMetrics.grandTotal,
-                          students: draftStudents.map(s => ({
-                            student_id: s.student_id,
-                            full_name: s.full_name,
-                            gender: s.gender,
-                            receipt_number: s.receipt_number,
-                            course: s.course,
-                            start_date: s.start_date,
-                            student_type: isContinuingStudent(s) ? 'Continuing' : 'New',
-                            pending_renewal_fee: s.pending_renewal_fee,
-                            telegram_name: s.telegram_name || '',
-                            contact: s.contact || '',
-                            notes: (s.notes || (s as any).description || '').trim(),
-                            group: s.group || ''
-                          }))
+                          students: draftStudents.map(s => {
+                            const feeInfo = getStudentFeeInfo(s);
+                            return {
+                              student_id: s.student_id,
+                              full_name: s.full_name,
+                              gender: s.gender,
+                              receipt_number: s.receipt_number,
+                              course: s.course,
+                              start_date: s.start_date,
+                              end_date: s.end_date,
+                              duration_days: feeInfo.durationDays,
+                              fee: feeInfo.fee,
+                              student_type: feeInfo.isContinuing ? 'Continuing' : 'New',
+                              pending_renewal_fee: s.pending_renewal_fee,
+                              telegram_name: s.telegram_name || '',
+                              contact: s.contact || '',
+                              notes: (s.notes || (s as any).description || '').trim(),
+                              group: s.group || ''
+                            };
+                          })
                         };
                         setPrintingReport(draftReport);
                       } else if (existingReport) {
@@ -978,81 +1195,124 @@ export default function PayrollCenter({
                 </div>
 
                 {/* Invoice Metadata Grid */}
-                <div className="grid grid-cols-2 gap-6 bg-slate-50 p-4 rounded-xl border border-slate-200 mb-8 text-xs print:p-3 print:rounded-lg print-break-inside-avoid avoid-break">
+                <div className="grid grid-cols-2 gap-4 sm:gap-6 bg-slate-50 p-4 rounded-xl border border-slate-200 mb-8 text-xs print:p-3 print:rounded-lg print-break-inside-avoid avoid-break">
                   <div className="space-y-1.5">
                     <p><span className="font-bold text-slate-700">សម្រាប់ខែ (Report Month)៖</span> {printingReport.report_month}</p>
                     <p><span className="font-bold text-slate-700">ថ្ងៃបង្កើត (Generated Date)៖</span> {printingReport.generated_date}</p>
+                    <p><span className="font-bold text-slate-700">សិស្សថ្មី (New Students)៖</span> {printAnalysis.countNew} នាក់</p>
+                    <p><span className="font-bold text-slate-700">សិស្សសិក្សាបន្ត (Continuing Students)៖</span> {printAnalysis.countContinuing} នាក់</p>
                   </div>
                   <div className="space-y-1.5 text-right print:text-left print:pl-8">
-                    <p><span className="font-bold text-slate-700">សិស្សសរុប (Total Students)៖</span> {printingReport.student_count_office + printingReport.student_count_advanced} នាក់</p>
-                    <p><span className="font-bold text-slate-700">ប្រាក់កម្រៃសរុប (Total Settlement)៖</span> <span className="font-extrabold text-sm text-indigo-700">${printingReport.total_payment.toFixed(2)}</span></p>
+                    <p><span className="font-bold text-slate-700">សិស្សសរុប (Total Students)៖</span> {printingReport.students.length} នាក់</p>
+                    <p><span className="font-bold text-slate-700">ប្រាក់កម្រៃគ្រូសិស្សថ្មី សរុប (Total)៖</span> <span className="font-bold text-emerald-700 font-mono">${printAnalysis.totalNew.toFixed(2)}</span></p>
+                    <p><span className="font-bold text-slate-700">ប្រាក់កម្រៃគ្រូសម្រាប់សិស្សបន្ត សរុប (Total)៖</span> <span className="font-bold text-indigo-700 font-mono">${printAnalysis.totalContinuing.toFixed(2)}</span></p>
+                    <p className="pt-1 border-t border-slate-200"><span className="font-bold text-slate-900">ប្រាក់កម្រៃគ្រូសរុបរួម (Total)៖</span> <span className="font-extrabold text-sm text-indigo-700 font-mono">${printAnalysis.grandTotal.toFixed(2)}</span></p>
                   </div>
                 </div>
 
                 {/* Course Settlement Section */}
                 <div className="space-y-3 mb-8 print-break-inside-avoid avoid-break">
-                  <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 border-b border-slate-200 pb-1.5">១. សេចក្ដីសង្ខេបតាមវគ្គសិក្សា (Course Settlement Summary)</h4>
+                  <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 border-b border-slate-200 pb-1.5">
+                    ១. សេចក្ដីសង្ខេបតាមវគ្គសិក្សា (Course Settlement Summary)
+                  </h4>
                   <table className="w-full text-left border-collapse text-xs print:border print:border-slate-300">
                     <thead>
                       <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase">
                         <th className="p-3">ឈ្មោះវគ្គសិក្សា (Course Name)</th>
-                        <th className="p-3 text-center">ចំនួនសិស្ស (Student Count)</th>
-                        <th className="p-3 text-right">តម្លៃក្នុងម្នាក់ (Settlement Rate)</th>
+                        <th className="p-3 text-center">ប្រភេទ (Type)</th>
+                        <th className="p-3 text-center">ចំនួនសិស្ស (Count)</th>
+                        <th className="p-3 text-right">តម្លៃកំណត់ (Rate)</th>
                         <th className="p-3 text-right">ប្រាក់កម្រៃសរុប (Subtotal)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 print:divide-slate-200">
-                      {printingReport.student_count_office > 0 && (
-                        <tr className="print-break-inside-avoid avoid-break">
-                          <td className="p-3 font-semibold text-slate-800">Computer Basic Office</td>
-                          <td className="p-3 text-center font-bold">{printingReport.student_count_office} នាក់</td>
-                          <td className="p-3 text-right font-mono">${printingReport.rate_office.toFixed(2)}</td>
-                          <td className="p-3 text-right font-bold text-indigo-600">
-                            ${(printingReport.student_count_office * printingReport.rate_office).toFixed(2)}
+                      {/* Section A: New students courses */}
+                      {printAnalysis.newGroups.map(group => (
+                        <tr key={`sum-new-${group.courseName}`} className="print-break-inside-avoid avoid-break">
+                          <td className="p-3 font-semibold text-slate-800">{group.courseName}</td>
+                          <td className="p-3 text-center">
+                            <span className="font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded text-[10px]">
+                              សិស្សថ្មី (New)
+                            </span>
+                          </td>
+                          <td className="p-3 text-center font-bold">{group.count} នាក់</td>
+                          <td className="p-3 text-right font-mono">
+                            ${(group.courseName === 'Advanced Excel' ? (printingReport.rate_advanced || 11) : (printingReport.rate_office || 7)).toFixed(2)}
+                          </td>
+                          <td className="p-3 text-right font-bold text-emerald-700 font-mono">
+                            ${group.subtotal.toFixed(2)}
                           </td>
                         </tr>
-                      )}
-                      {printingReport.student_count_advanced > 0 && (
-                        <tr className="print-break-inside-avoid avoid-break">
-                          <td className="p-3 font-semibold text-slate-800">Advanced Excel</td>
-                          <td className="p-3 text-center font-bold">{printingReport.student_count_advanced} នាក់</td>
-                          <td className="p-3 text-right font-mono">${printingReport.rate_advanced.toFixed(2)}</td>
-                          <td className="p-3 text-right font-bold text-indigo-600">
-                            ${(printingReport.student_count_advanced * printingReport.rate_advanced).toFixed(2)}
-                          </td>
+                      ))}
+                      {/* Subtotal New Students */}
+                      <tr className="bg-emerald-50/50 font-bold border-t border-b border-emerald-100 print-break-inside-avoid avoid-break">
+                        <td className="p-2.5 text-right font-bold text-emerald-900" colSpan={4}>
+                          ប្រាក់កម្រៃគ្រូសិស្សថ្មី សរុប (Total)៖
+                        </td>
+                        <td className="p-2.5 text-right text-sm font-bold text-emerald-700 font-mono">
+                          ${printAnalysis.totalNew.toFixed(2)}
+                        </td>
+                      </tr>
+
+                      {/* Section B: Continuing students courses */}
+                      {printAnalysis.continuingGroups.length > 0 ? (
+                        printAnalysis.continuingGroups.map(group => {
+                          const dailyRate = getContinuingDailyRate(group.courseName);
+                          return (
+                            <tr key={`sum-cont-${group.courseName}`} className="print-break-inside-avoid avoid-break">
+                              <td className="p-3 font-semibold text-slate-800">{group.courseName}</td>
+                              <td className="p-3 text-center">
+                                <span className="font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded text-[10px]">
+                                  សិស្សបន្ត (Cont.)
+                                </span>
+                              </td>
+                              <td className="p-3 text-center font-bold">{group.count} នាក់</td>
+                              <td className="p-3 text-right font-mono text-[11px] text-indigo-700">
+                                ${dailyRate.toFixed(2)}/ថ្ងៃ
+                              </td>
+                              <td className="p-3 text-right font-bold text-indigo-700 font-mono">
+                                ${group.subtotal.toFixed(2)}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr className="print-break-inside-avoid avoid-break text-slate-400 italic">
+                          <td className="p-2.5 text-center" colSpan={5}>គ្មានទិន្នន័យសិស្សសិក្សាបន្តក្នុងខែនេះទេ (No continuing students this month)</td>
                         </tr>
                       )}
-                      {/* Custom courses if any in future reports */}
-                      {courseConfig && Object.keys(courseConfig).filter(k => k !== 'Computer Basic Office' && k !== 'Advanced Excel').map(courseName => {
-                        const studentsInCourse = printingReport.students.filter(s => s.course === courseName);
-                        if (studentsInCourse.length === 0) return null;
-                        const rate = courseConfig[courseName]?.rate || 7.00;
-                        const subTotal = studentsInCourse.length * rate;
-                        return (
-                          <tr key={courseName} className="print-break-inside-avoid avoid-break">
-                            <td className="p-3 font-semibold text-slate-800">{courseName}</td>
-                            <td className="p-3 text-center font-bold">{studentsInCourse.length} នាក់</td>
-                            <td className="p-3 text-right font-mono">${rate.toFixed(2)}</td>
-                            <td className="p-3 text-right font-bold text-indigo-600">${subTotal.toFixed(2)}</td>
-                          </tr>
-                        );
-                      })}
-                      <tr className="bg-slate-50 border-t border-slate-200 font-bold print-break-inside-avoid avoid-break">
-                        <td className="p-3 text-right" colSpan={3}>ប្រាក់កម្រៃសរុបរួម (Grand Total Settlement)៖</td>
-                        <td className="p-3 text-right text-sm text-indigo-700 font-extrabold">${printingReport.total_payment.toFixed(2)}</td>
+                      {/* Subtotal Continuing Students */}
+                      <tr className="bg-indigo-50/50 font-bold border-t border-b border-indigo-100 print-break-inside-avoid avoid-break">
+                        <td className="p-2.5 text-right font-bold text-indigo-900" colSpan={4}>
+                          ប្រាក់កម្រៃគ្រូសម្រាប់សិស្សបន្ត សរុប (Total)៖
+                        </td>
+                        <td className="p-2.5 text-right text-sm font-bold text-indigo-700 font-mono">
+                          ${printAnalysis.totalContinuing.toFixed(2)}
+                        </td>
+                      </tr>
+
+                      {/* Grand Total Row */}
+                      <tr className="bg-slate-100 border-t-2 border-slate-300 font-bold print-break-inside-avoid avoid-break">
+                        <td className="p-3 text-right text-xs uppercase tracking-wider text-slate-900 font-extrabold" colSpan={4}>
+                          ប្រាក់កម្រៃគ្រូសរុបរួម (Total)៖
+                        </td>
+                        <td className="p-3 text-right text-base text-indigo-700 font-extrabold font-mono">
+                          ${printAnalysis.grandTotal.toFixed(2)}
+                        </td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
 
-                {/* Detailed Student List Section Grouped by Course Category */}
-                <div className="space-y-3 mb-10 print:mb-8 print:break-before-auto">
+                {/* 2.A: Detailed New Students Register */}
+                <div className="space-y-3 mb-8 print-break-inside-avoid avoid-break">
                   <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
-                    <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700">
-                      ២. បញ្ជីឈ្មោះសិស្សលម្អិត តាមវគ្គសិក្សា (Detailed Student Register by Course)
+                    <h4 className="font-bold text-xs uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                      <Sparkles className="h-3.5 w-3.5 text-emerald-600 inline" />
+                      <span>២.ក. បញ្ជីឈ្មោះសិស្សថ្មី (New Students Register)</span>
                     </h4>
-                    <span className="text-[11px] font-bold text-slate-600">
-                      សរុប {printingReport.students.length} នាក់
+                    <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                      សិស្សថ្មីសរុប {printAnalysis.countNew} នាក់ (${printAnalysis.totalNew.toFixed(2)})
                     </span>
                   </div>
 
@@ -1070,117 +1330,274 @@ export default function PayrollCenter({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 print:divide-gray-200">
-                      {groupedPrintStudents.map((group) => {
-                        let studentIndex = 0;
-                        return (
-                          <React.Fragment key={group.courseName}>
-                            {/* Course Category Sub-header Row */}
-                            <tr className="course-subheading-row bg-slate-100 font-bold border-t-2 border-b border-slate-300 print-break-inside-avoid avoid-break avoid-break-after">
-                              <td colSpan={8} className="py-2.5 px-4 text-xs uppercase tracking-wider text-slate-800">
-                                <div className="flex items-center justify-between">
-                                  <span className="font-extrabold text-slate-900 flex items-center gap-2">
-                                    <span className="inline-block w-2 h-2 rounded-full bg-indigo-600 mr-0.5" />
-                                    វគ្គសិក្សា (Course)៖ {group.courseName}
-                                  </span>
-                                  <span className="text-[11px] font-bold text-slate-700 font-mono">
-                                    {group.count} នាក់ &times; ${group.rate.toFixed(2)} = ${group.subtotal.toFixed(2)}
-                                  </span>
-                                </div>
-                              </td>
-                            </tr>
+                      {printAnalysis.newGroups.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="py-4 text-center text-gray-400 italic">
+                            មិនមានសិស្សថ្មីសម្រាប់ខែនេះឡើយ (No new students for this month)
+                          </td>
+                        </tr>
+                      ) : (
+                        printAnalysis.newGroups.map(group => {
+                          let studentIndex = 0;
+                          return (
+                            <React.Fragment key={`new-course-${group.courseName}`}>
+                              <tr className="course-subheading-row bg-slate-100 font-bold border-t-2 border-b border-slate-300 print-break-inside-avoid avoid-break avoid-break-after">
+                                <td colSpan={8} className="py-2 px-4 text-xs uppercase tracking-wider text-slate-800">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-extrabold text-slate-900 flex items-center gap-2">
+                                      <span className="inline-block w-2 h-2 rounded-full bg-emerald-600 mr-0.5" />
+                                      វគ្គសិក្សា (Course)៖ {group.courseName}
+                                    </span>
+                                    <span className="text-[11px] font-bold text-slate-700 font-mono">
+                                      {group.count} នាក់ &times; ${(group.courseName === 'Advanced Excel' ? (printingReport.rate_advanced || 11) : (printingReport.rate_office || 7)).toFixed(2)} = ${group.subtotal.toFixed(2)}
+                                    </span>
+                                  </div>
+                                </td>
+                              </tr>
+                              {group.studyGroups.map(studyGroup => (
+                                <React.Fragment key={`new-group-${group.courseName}-${studyGroup.groupName}`}>
+                                  <tr className="group-subheading-row bg-gray-50 border-y border-gray-200 font-bold print-break-inside-avoid avoid-break avoid-break-after">
+                                    <td colSpan={8} className="py-1.5 px-4 text-xs text-gray-800 bg-gray-50">
+                                      <div className="flex items-center justify-between">
+                                        <span className="font-bold text-gray-800 flex items-center gap-2">
+                                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                          ក្រុមសិក្សា (Class / Study Group)៖ <span className="text-emerald-700 font-semibold">{studyGroup.groupName}</span>
+                                        </span>
+                                        <span className="text-[10.5px] font-medium text-gray-500 font-mono">
+                                          {studyGroup.students.length} នាក់
+                                        </span>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                  {studyGroup.students.map(student => {
+                                    studentIndex++;
+                                    const feeInfo = getStudentFeeInfo(student);
+                                    const fullStudentInfo = students.find(s => s.student_id === student.student_id);
+                                    const studentUsername = student.telegram_name || fullStudentInfo?.telegram_name || student.contact || fullStudentInfo?.contact;
+                                    const studentDescription = (student.notes || (student as any).description || fullStudentInfo?.notes || (fullStudentInfo as any)?.description || '').trim();
+                                    const tgLink = getTelegramLink(student.contact || fullStudentInfo?.contact || '', student.telegram_name || fullStudentInfo?.telegram_name || studentUsername || '');
 
-                            {/* Study Group / Class Sub-sections */}
-                            {group.studyGroups.map((studyGroup) => (
-                              <React.Fragment key={studyGroup.groupName}>
-                                {/* Study Group Sub-header Row - Displayed ONLY ONCE per Class */}
-                                <tr className="group-subheading-row bg-gray-50 border-y border-gray-200 font-bold print-break-inside-avoid avoid-break avoid-break-after">
-                                  <td colSpan={8} className="py-2 px-4 text-xs text-gray-800 bg-gray-50">
-                                    <div className="flex items-center justify-between">
-                                      <span className="font-bold text-gray-800 flex items-center gap-2">
-                                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                                        ក្រុមសិក្សា (Class / Study Group)៖ <span className="text-indigo-700 font-semibold">{studyGroup.groupName}</span>
-                                      </span>
-                                      <span className="text-[10.5px] font-medium text-gray-500 font-mono">
-                                        {studyGroup.students.length} នាក់
-                                      </span>
-                                    </div>
-                                  </td>
-                                </tr>
-
-                                {/* Student Rows in this Study Group */}
-                                {studyGroup.students.map((student) => {
-                                  studentIndex++;
-                                  const studentRate = student.course === 'Advanced Excel' 
-                                    ? printingReport.rate_advanced 
-                                    : (student.course === 'Computer Basic Office' ? printingReport.rate_office : (courseConfig?.[student.course]?.rate || 7.00));
-                                  
-                                  const fullStudentInfo = students.find(s => s.student_id === student.student_id);
-                                  const studentUsername = student.telegram_name || fullStudentInfo?.telegram_name || student.contact || fullStudentInfo?.contact;
-                                  const studentDescription = (student.notes || (student as any).description || fullStudentInfo?.notes || (fullStudentInfo as any)?.description || '').trim();
-                                  const tgLink = getTelegramLink(student.contact || fullStudentInfo?.contact || '', student.telegram_name || fullStudentInfo?.telegram_name || studentUsername || '');
-
-                                  return (
-                                    <tr key={student.student_id} className="hover:bg-slate-50/50 print-break-inside-avoid avoid-break border-b border-gray-100 print:border-gray-200">
-                                      <td className="py-2.5 px-3 text-center text-slate-400 font-medium">{studentIndex}</td>
-                                      <td className="py-2.5 px-3 font-mono font-bold text-indigo-600">{student.student_id}</td>
-                                      <td className="py-2.5 px-3">
-                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                          <span className="font-semibold text-gray-900 text-xs sm:text-sm">{student.full_name} ({student.gender})</span>
-                                          {isContinuingStudent(student) ? (
-                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                              <RotateCcw className="h-2 w-2" strokeWidth={2.5} />
-                                              <span>[សិក្សាបន្ត]</span>
+                                    return (
+                                      <tr key={student.student_id} className="hover:bg-slate-50/50 print-break-inside-avoid avoid-break border-b border-gray-100 print:border-gray-200">
+                                        <td className="py-2 px-3 text-center text-slate-400 font-medium">{studentIndex}</td>
+                                        <td className="py-2 px-3 font-mono font-bold text-emerald-700">{student.student_id}</td>
+                                        <td className="py-2 px-3">
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="font-semibold text-gray-900 text-xs sm:text-sm">{student.full_name} ({student.gender})</span>
+                                            <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[8.5px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                              [សិស្សថ្មី]
                                             </span>
-                                          ) : (
-                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                              <Sparkles className="h-2 w-2" strokeWidth={2.5} />
-                                              <span>[សិស្សថ្មី]</span>
-                                            </span>
-                                          )}
-                                        </div>
-
-                                        {/* Telegram / Username */}
-                                        {studentUsername && (
-                                          <div className="mt-1 flex items-center gap-1 text-[11px] text-gray-500 leading-tight">
-                                            <span className="font-medium text-gray-400">Username:</span>
-                                            <span className="font-mono font-medium text-gray-600">
-                                              {studentUsername}
-                                            </span>
-                                            {tgLink && (
-                                              <a
-                                                href={tgLink}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="inline-flex items-center justify-center text-sky-500 hover:text-sky-600 active:text-sky-700 transition-transform hover:scale-110 cursor-pointer p-0.5"
-                                                title={`ឆាតទៅតេឡេក្រាម (Open Telegram): ${tgLink}`}
-                                                aria-label={`Open Telegram chat with ${student.full_name}`}
-                                              >
-                                                <Send className="w-3 h-3 text-sky-500 hover:text-sky-600" />
-                                              </a>
-                                            )}
                                           </div>
-                                        )}
-                                      </td>
-                                      <td className="py-2.5 px-3 font-mono text-gray-600">{student.receipt_number}</td>
-                                      <td className="py-2.5 px-3 text-gray-700">{student.course}</td>
-                                      <td className="py-2.5 px-3 text-gray-600 font-mono">{student.start_date}</td>
-                                      <td className="py-2.5 px-3 text-slate-700 print:text-black text-xs break-words whitespace-normal font-normal">
-                                        {studentDescription ? (
-                                          <span>{studentDescription}</span>
-                                        ) : (
-                                          <span className="text-slate-300 print:text-slate-400 italic text-[11px]">-</span>
-                                        )}
-                                      </td>
-                                      <td className="py-2.5 px-3 text-right font-bold text-emerald-600 font-mono">${studentRate.toFixed(2)}</td>
-                                    </tr>
-                                  );
-                                })}
-                              </React.Fragment>
-                            ))}
-                          </React.Fragment>
-                        );
-                      })}
+                                          {studentUsername && (
+                                            <div className="mt-0.5 flex items-center gap-1 text-[11px] text-gray-500 leading-tight">
+                                              <span className="font-medium text-gray-400">Username:</span>
+                                              <span className="font-mono font-medium text-gray-600">{studentUsername}</span>
+                                              {tgLink && (
+                                                <a
+                                                  href={tgLink}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="inline-flex items-center justify-center text-sky-500 hover:text-sky-600 transition-transform hover:scale-110 cursor-pointer p-0.5"
+                                                  title={`ឆាតទៅតេឡេក្រាម (Open Telegram): ${tgLink}`}
+                                                  aria-label={`Open Telegram chat with ${student.full_name}`}
+                                                >
+                                                  <Send className="w-3 h-3 text-sky-500 hover:text-sky-600" />
+                                                </a>
+                                              )}
+                                            </div>
+                                          )}
+                                        </td>
+                                        <td className="py-2 px-3 font-mono text-gray-600">{student.receipt_number}</td>
+                                        <td className="py-2 px-3 text-gray-700">{student.course}</td>
+                                        <td className="py-2 px-3 text-gray-600 font-mono">{student.start_date}</td>
+                                        <td className="py-2 px-3 text-slate-700 print:text-black text-xs break-words whitespace-normal font-normal">
+                                          {studentDescription ? (
+                                            <span>{studentDescription}</span>
+                                          ) : (
+                                            <span className="text-slate-300 print:text-slate-400 italic text-[11px]">-</span>
+                                          )}
+                                        </td>
+                                        <td className="py-2 px-3 text-right font-bold text-emerald-600 font-mono">
+                                          ${feeInfo.fee.toFixed(2)}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </React.Fragment>
+                              ))}
+                            </React.Fragment>
+                          );
+                        })
+                      )}
                     </tbody>
+                    <tfoot>
+                      <tr className="bg-emerald-50/70 font-bold border-t border-emerald-200 text-xs">
+                        <td colSpan={7} className="py-2.5 px-4 text-right text-emerald-900 font-bold">
+                          សរុបប្រាក់កម្រៃគ្រូសិស្សថ្មី (New Students Total)៖
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-extrabold text-emerald-700 font-mono text-sm">
+                          ${printAnalysis.totalNew.toFixed(2)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                {/* 2.B: Detailed Continuing Students Register */}
+                <div className="space-y-3 mb-10 print:mb-8 print-break-inside-avoid avoid-break">
+                  <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
+                    <h4 className="font-bold text-xs uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                      <RotateCcw className="h-3.5 w-3.5 text-indigo-600 inline" />
+                      <span>២.ខ. បញ្ជីឈ្មោះសិស្សសិក្សាបន្ត (Continuing Students Register)</span>
+                    </h4>
+                    <span className="text-[11px] font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+                      សិស្សបន្តសរុប {printAnalysis.countContinuing} នាក់ (${printAnalysis.totalContinuing.toFixed(2)})
+                    </span>
+                  </div>
+
+                  <table className="w-full text-left border-collapse text-xs print:border print:border-gray-200">
+                    <thead>
+                      <tr className="bg-gray-100 border-b border-gray-200 text-gray-700 font-bold uppercase text-[11px]">
+                        <th className="py-2.5 px-3 w-10 text-center">Nº</th>
+                        <th className="py-2.5 px-3 w-20">ID</th>
+                        <th className="py-2.5 px-3">ឈ្មោះសិស្ស (Full Name)</th>
+                        <th className="py-2.5 px-3 w-24">លេខវិក្កយបត្រ (Receipt)</th>
+                        <th className="py-2.5 px-3">វគ្គសិក្សា (Course)</th>
+                        <th className="py-2.5 px-3 min-w-[110px]">កាលបរិច្ឆេទ (Period)</th>
+                        <th className="py-2.5 px-3 min-w-[110px]">រយៈពេលសិក្សា (Duration)</th>
+                        <th className="py-2.5 px-3 min-w-[120px]">ការពិពណ៌នា (Description)</th>
+                        <th className="py-2.5 px-3 w-24 text-right">តម្លៃកម្រៃ (Amount)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 print:divide-gray-200">
+                      {printAnalysis.continuingGroups.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} className="py-4 text-center text-gray-400 italic">
+                            មិនមានសិស្សសិក្សាបន្តសម្រាប់ខែនេះឡើយ (No continuing students for this month)
+                          </td>
+                        </tr>
+                      ) : (
+                        printAnalysis.continuingGroups.map(group => {
+                          let studentIndex = 0;
+                          const dailyRate = getContinuingDailyRate(group.courseName);
+                          return (
+                            <React.Fragment key={`cont-course-${group.courseName}`}>
+                              <tr className="course-subheading-row bg-slate-100 font-bold border-t-2 border-b border-slate-300 print-break-inside-avoid avoid-break avoid-break-after">
+                                <td colSpan={9} className="py-2 px-4 text-xs uppercase tracking-wider text-slate-800">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-extrabold text-slate-900 flex items-center gap-2">
+                                      <span className="inline-block w-2 h-2 rounded-full bg-indigo-600 mr-0.5" />
+                                      វគ្គសិក្សា (Course)៖ {group.courseName} (អត្រា៖ ${dailyRate.toFixed(2)}/ថ្ងៃ)
+                                    </span>
+                                    <span className="text-[11px] font-bold text-slate-700 font-mono">
+                                      {group.count} នាក់ | សរុប = ${group.subtotal.toFixed(2)}
+                                    </span>
+                                  </div>
+                                </td>
+                              </tr>
+                              {group.studyGroups.map(studyGroup => (
+                                <React.Fragment key={`cont-group-${group.courseName}-${studyGroup.groupName}`}>
+                                  <tr className="group-subheading-row bg-gray-50 border-y border-gray-200 font-bold print-break-inside-avoid avoid-break avoid-break-after">
+                                    <td colSpan={9} className="py-1.5 px-4 text-xs text-gray-800 bg-gray-50">
+                                      <div className="flex items-center justify-between">
+                                        <span className="font-bold text-gray-800 flex items-center gap-2">
+                                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                                          ក្រុមសិក្សា (Class / Study Group)៖ <span className="text-indigo-700 font-semibold">{studyGroup.groupName}</span>
+                                        </span>
+                                        <span className="text-[10.5px] font-medium text-gray-500 font-mono">
+                                          {studyGroup.students.length} នាក់
+                                        </span>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                  {studyGroup.students.map(student => {
+                                    studentIndex++;
+                                    const feeInfo = getStudentFeeInfo(student);
+                                    const fullStudentInfo = students.find(s => s.student_id === student.student_id);
+                                    const studentUsername = student.telegram_name || fullStudentInfo?.telegram_name || student.contact || fullStudentInfo?.contact;
+                                    const studentDescription = (student.notes || (student as any).description || fullStudentInfo?.notes || (fullStudentInfo as any)?.description || '').trim();
+                                    const tgLink = getTelegramLink(student.contact || fullStudentInfo?.contact || '', student.telegram_name || fullStudentInfo?.telegram_name || studentUsername || '');
+
+                                    return (
+                                      <tr key={student.student_id} className="hover:bg-slate-50/50 print-break-inside-avoid avoid-break border-b border-gray-100 print:border-gray-200">
+                                        <td className="py-2 px-3 text-center text-slate-400 font-medium">{studentIndex}</td>
+                                        <td className="py-2 px-3 font-mono font-bold text-indigo-600">{student.student_id}</td>
+                                        <td className="py-2 px-3">
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="font-semibold text-gray-900 text-xs sm:text-sm">{student.full_name} ({student.gender})</span>
+                                            <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[8.5px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                              [សិក្សាបន្ត]
+                                            </span>
+                                          </div>
+                                          {studentUsername && (
+                                            <div className="mt-0.5 flex items-center gap-1 text-[11px] text-gray-500 leading-tight">
+                                              <span className="font-medium text-gray-400">Username:</span>
+                                              <span className="font-mono font-medium text-gray-600">{studentUsername}</span>
+                                              {tgLink && (
+                                                <a
+                                                  href={tgLink}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="inline-flex items-center justify-center text-sky-500 hover:text-sky-600 transition-transform hover:scale-110 cursor-pointer p-0.5"
+                                                  title={`ឆាតទៅតេឡេក្រាម (Open Telegram): ${tgLink}`}
+                                                  aria-label={`Open Telegram chat with ${student.full_name}`}
+                                                >
+                                                  <Send className="w-3 h-3 text-sky-500 hover:text-sky-600" />
+                                                </a>
+                                              )}
+                                            </div>
+                                          )}
+                                        </td>
+                                        <td className="py-2 px-3 font-mono text-gray-600">{student.receipt_number}</td>
+                                        <td className="py-2 px-3 text-gray-700">{student.course}</td>
+                                        <td className="py-2 px-3 text-gray-600 font-mono text-[11px]">
+                                          <div>{student.start_date || feeInfo.startDate}</div>
+                                          <div className="text-gray-400 text-[10px]">ដល់ {student.end_date || feeInfo.endDate || '-'}</div>
+                                        </td>
+                                        <td className="py-2 px-3 text-indigo-900 font-semibold text-[11px]">
+                                          <span className="inline-block px-1.5 py-0.5 bg-indigo-50 border border-indigo-200 rounded font-mono text-[10.5px]">
+                                            {feeInfo.durationDays} ថ្ងៃ (x ${feeInfo.dailyRate.toFixed(2)}/ថ្ងៃ)
+                                          </span>
+                                        </td>
+                                        <td className="py-2 px-3 text-slate-700 print:text-black text-xs break-words whitespace-normal font-normal">
+                                          {studentDescription ? (
+                                            <span>{studentDescription}</span>
+                                          ) : (
+                                            <span className="text-slate-300 print:text-slate-400 italic text-[11px]">-</span>
+                                          )}
+                                        </td>
+                                        <td className="py-2 px-3 text-right font-bold text-indigo-700 font-mono">
+                                          ${feeInfo.fee.toFixed(2)}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </React.Fragment>
+                              ))}
+                            </React.Fragment>
+                          );
+                        })
+                      )}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-indigo-50/70 font-bold border-t border-indigo-200 text-xs">
+                        <td colSpan={8} className="py-2.5 px-4 text-right text-indigo-900 font-bold">
+                          សរុបប្រាក់កម្រៃគ្រូសម្រាប់សិស្សបន្ត (Continuing Students Total)៖
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-extrabold text-indigo-700 font-mono text-sm">
+                          ${printAnalysis.totalContinuing.toFixed(2)}
+                        </td>
+                      </tr>
+                      {/* Grand summary row in table */}
+                      <tr className="bg-slate-100 font-bold border-t-2 border-slate-300 text-xs">
+                        <td colSpan={8} className="py-3 px-4 text-right text-slate-900 font-extrabold uppercase">
+                          ប្រាក់កម្រៃគ្រូសរុបរួម (Grand Total Settlement)៖
+                        </td>
+                        <td className="py-3 px-3 text-right font-extrabold text-indigo-700 font-mono text-base">
+                          ${printAnalysis.grandTotal.toFixed(2)}
+                        </td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
 
@@ -1424,6 +1841,7 @@ export default function PayrollCenter({
                   receipt_number: formData.get('receiptNumber') as string,
                   course: formData.get('course') as any,
                   start_date: formData.get('startDate') as string,
+                  end_date: (formData.get('endDate') as string) || editingDraftStudent.end_date,
                   notes: (formData.get('notes') as string || '').trim(),
                 };
                 handleSaveDraftEdit(updated);
@@ -1484,7 +1902,7 @@ export default function PayrollCenter({
 
                   {/* Start Date */}
                   <div className="space-y-1">
-                    <label className="block text-xs font-bold text-gray-700">ថ្ងៃចូលរៀន (Start Date)</label>
+                    <label className="block text-xs font-bold text-gray-700">ថ្ងៃចូលរៀន / ថ្ងៃបន្ត (Start Date)</label>
                     <input
                       type="date"
                       name="startDate"
@@ -1492,6 +1910,18 @@ export default function PayrollCenter({
                       required
                       className="w-full px-3 py-2 bg-slate-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
                     />
+                  </div>
+
+                  {/* End Date */}
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-gray-700">ថ្ងៃផុតកំណត់ (End Date / Expiry Date)</label>
+                    <input
+                      type="date"
+                      name="endDate"
+                      defaultValue={editingDraftStudent.end_date || ''}
+                      className="w-full px-3 py-2 bg-slate-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                    />
+                    <p className="text-[10px] text-gray-400">ប្រើសម្រាប់កំណត់រយៈពេលសិក្សារបស់សិស្សបន្ត ($0.35/ថ្ងៃ ឬ $0.57/ថ្ងៃ)</p>
                   </div>
 
                   {/* Notes / Description */}

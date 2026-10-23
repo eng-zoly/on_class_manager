@@ -56,8 +56,12 @@ export interface PayrollReport {
   generated_date: string; // YYYY-MM-DD HH:mm
   student_count_office: number;
   student_count_advanced: number;
+  student_count_new?: number;
+  student_count_continuing?: number;
   rate_office: number; // $7
   rate_advanced: number; // $11
+  total_payment_new?: number;
+  total_payment_continuing?: number;
   total_payment: number;
   students: {
     student_id: string;
@@ -66,6 +70,9 @@ export interface PayrollReport {
     receipt_number: string;
     course: CourseType;
     start_date: string;
+    end_date?: string;
+    duration_days?: number;
+    fee?: number;
     student_type?: StudentType;
     pending_renewal_fee?: boolean;
     telegram_name?: string;

@@ -427,7 +427,7 @@ export default function StudentFormModal({
                         {pendingRenewalFee ? (
                           <span className="text-emerald-700 flex items-center gap-1 font-semibold">
                             <Check className="h-3 w-3 text-emerald-600" strokeWidth={2} />
-                            <span>គិតបញ្ចូលក្នុងតារាងបើកប្រាក់កម្រៃគ្រូ</span>
+                            <span>គិតបញ្ចូលក្នុងតារាងបើកប្រាក់កម្រៃគ្រូ (គិតតាមរយៈពេលសិក្សា $0.35/ថ្ងៃ ឬ $0.57/ថ្ងៃ)</span>
                           </span>
                         ) : (
                           <span className="text-slate-400 flex items-center gap-1">
