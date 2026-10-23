@@ -111,6 +111,8 @@ function ExpiryCenter({
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [includeInPayroll, setIncludeInPayroll] = useState<boolean>(true);
+  const [renewalType, setRenewalType] = useState<'Continuing' | 'Transfer'>('Continuing');
+  const [remainingHours, setRemainingHours] = useState<number>(10);
 
   // Handle reminder copy
   const handleCopyReminder = (student: Student) => {
@@ -125,6 +127,8 @@ function ExpiryCenter({
     setRenewingStudent(student);
     setReceiptNumber(student.receipt_number ? `${student.receipt_number}-REN` : 'REC-REN-');
     setIncludeInPayroll(true);
+    setRenewalType((student.student_type as any) === 'Transfer' ? 'Transfer' : 'Continuing');
+    setRemainingHours(student.remaining_hours !== undefined ? student.remaining_hours : 10);
     
     // Auto-fill dates based on system reference date
     setStartDate(referenceDate);
@@ -145,11 +149,14 @@ function ExpiryCenter({
       start_date: startDate,
       end_date: endDate,
       receipt_number: receiptNumber,
-      include_in_payroll: includeInPayroll
+      include_in_payroll: includeInPayroll,
+      student_type: renewalType,
+      remaining_hours: remainingHours,
+      fee_calc_method: renewalType === 'Transfer' ? 'days' : 'hours'
     });
     
     setRenewingStudent(null);
-    alert(`បានបន្តការសិក្សាដោយជោគជ័យសម្រាប់សិស្ស ${renewingStudent.full_name}! (ប្រភេទសិស្ស៖ Continuing${includeInPayroll ? ' - គិតប្រាក់កម្រៃគ្រូឡើងវិញ' : ' - មិនគិតប្រាក់កម្រៃគ្រូ'})`);
+    alert(`បានបន្តការសិក្សាដោយជោគជ័យសម្រាប់សិស្ស ${renewingStudent.full_name}! (ប្រភេទសិស្ស៖ ${renewalType === 'Transfer' ? 'សិស្សប្ដូរ (Transfer)' : 'សិស្សបន្ត (Continuing)'}${includeInPayroll ? ' - គិតប្រាក់កម្រៃគ្រូឡើងវិញ' : ' - មិនគិតប្រាក់កម្រៃគ្រូ'})`);
   };
 
   return (
@@ -527,7 +534,7 @@ function ExpiryCenter({
                       onChange={(e) => setIncludeInPayroll(e.target.checked)}
                       className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                     />
-                    <div className="space-y-1">
+                    <div className="space-y-1 flex-1">
                       <span className="text-xs font-bold block text-slate-800">
                         គិតប្រាក់កម្រៃគ្រូឡើងវិញ (Include in Payroll - Renewal Fee)
                       </span>
@@ -546,6 +553,63 @@ function ExpiryCenter({
                       </div>
                     </div>
                   </label>
+
+                  {includeInPayroll && (
+                    <div className="mt-3 pt-3 border-t border-indigo-100 space-y-2.5">
+                      <label className="block text-[11px] font-bold text-indigo-900 uppercase">ប្រភេទគិតកម្រៃគ្រូ៖</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setRenewalType('Continuing')}
+                          className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                            renewalType === 'Continuing'
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                              : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
+                          }`}
+                        >
+                          សិស្សបន្ត (គិតតាមម៉ោង)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRenewalType('Transfer')}
+                          className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                            renewalType === 'Transfer'
+                              ? 'bg-sky-600 text-white border-sky-600 shadow-2xs'
+                              : 'bg-white text-sky-700 border-sky-200 hover:bg-sky-50'
+                          }`}
+                        >
+                          សិស្សប្ដូរ (គិតតាមថ្ងៃ)
+                        </button>
+                      </div>
+
+                      {renewalType === 'Continuing' ? (
+                        <div className="flex items-center justify-between gap-2 p-2 bg-white rounded-lg border border-indigo-200">
+                          <div>
+                            <span className="text-xs font-bold text-indigo-950 block">ចំនួនម៉ោងនៅសល់ជាក់ស្ដែង</span>
+                            <span className="text-[10px] text-indigo-600 font-medium">
+                              {renewingStudent.course.includes('Excel') ? '$0.57/ម៉ោង' : '$0.35/ម៉ោង'} (ឧ. 0.35 × 10h = 3.5 USD)
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.5"
+                              value={remainingHours}
+                              onChange={(e) => setRemainingHours(parseFloat(e.target.value) || 0)}
+                              className="w-14 px-1.5 py-1 text-center border border-indigo-300 rounded font-bold text-xs text-indigo-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                            <span className="text-xs font-bold text-indigo-700">h</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-2 bg-white rounded-lg border border-sky-200 text-[10.5px] text-sky-800">
+                          គណនាតាមចំនួនថ្ងៃចុះឈ្មោះលើបង្កាន់ដៃបង់ប្រាក់ (Start Date ដល់ End Date) x {renewingStudent.course.includes('Excel') ? '$0.57/ថ្ងៃ' : '$0.35/ថ្ងៃ'}។
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-4 border-t border-gray-100 flex justify-end space-x-2">

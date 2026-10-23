@@ -39,11 +39,11 @@ export function calculateStudentDurationDays(startDateStr?: string | null, endDa
 }
 
 /**
- * Gets daily teacher fee rate for continuing students:
- * - Computer Basic Office: 15 / 44 = 0.35 ($15 full price / 44 standard days)
- * - Advanced Excel: 25 / 44 = 0.57 ($25 full price / 44 standard days)
+ * Gets hourly teacher fee rate for continuing students:
+ * - Computer Basic Office: 15 / 44 = 0.35 ($15 full price / 44 standard hours)
+ * - Advanced Excel: 25 / 44 = 0.57 ($25 full price / 44 standard hours)
  */
-export function getContinuingDailyRate(courseName: string): number {
+export function getContinuingHourlyRate(courseName: string): number {
   const lower = (courseName || '').toLowerCase();
   if (lower.includes('excel')) {
     return 0.57; // 25 / 44 = 0.57
@@ -51,12 +51,31 @@ export function getContinuingDailyRate(courseName: string): number {
   return 0.35; // 15 / 44 = 0.35
 }
 
+// Alias for daily rate (used for transfer students)
+export const getContinuingDailyRate = getContinuingHourlyRate;
+
 /**
- * Calculates continuing student teacher fee based on study duration and course.
+ * Calculates continuing student teacher fee based on actual remaining hours.
+ * Example: 0.35 * 10h = 3.5 USD
  */
-export function calculateContinuingStudentFee(durationDays: number, courseName: string): number {
+export function calculateContinuingStudentFeeByHours(remainingHours: number, courseName: string): number {
+  const hourlyRate = getContinuingHourlyRate(courseName);
+  return Math.round(remainingHours * hourlyRate * 100) / 100;
+}
+
+/**
+ * Calculates transfer student (សិស្សប្ដូរ) teacher fee based on days on receipt (Start Date to End Date).
+ */
+export function calculateTransferStudentFeeByDays(durationDays: number, courseName: string): number {
   const dailyRate = getContinuingDailyRate(courseName);
   return Math.round(durationDays * dailyRate * 100) / 100;
+}
+
+/**
+ * Calculates continuing student teacher fee based on study duration and course (fallback/legacy).
+ */
+export function calculateContinuingStudentFee(durationDays: number, courseName: string): number {
+  return calculateTransferStudentFeeByDays(durationDays, courseName);
 }
 
 /**

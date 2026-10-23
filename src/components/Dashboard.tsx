@@ -59,7 +59,7 @@ function Dashboard({ students, referenceDate, onSelectStudent, onTabChange, cour
         examReady.push(s);
       }
 
-      if (!s.archived && s.reported_month === null && (s.student_type === 'New' || (s.student_type === 'Continuing' && s.pending_renewal_fee === true))) {
+      if (!s.archived && s.reported_month === null && (s.student_type === 'New' || ((s.student_type === 'Continuing' || s.student_type === 'Transfer') && s.pending_renewal_fee === true))) {
         unreported.push(s);
       }
 

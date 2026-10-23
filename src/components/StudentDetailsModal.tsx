@@ -125,9 +125,13 @@ export default function StudentDetailsModal({
                   <span className="inline-block px-3 py-1 bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold rounded-full">
                     សិស្សចុះឈ្មោះថ្មី (New Student)
                   </span>
+                ) : student.student_type === 'Transfer' ? (
+                  <span className="inline-block px-3 py-1 bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold rounded-full">
+                    សិស្សប្ដូរ (Transfer Student){student.pending_renewal_fee && student.reported_month === null ? ' • គិតកម្រៃគ្រូ' : ''}
+                  </span>
                 ) : (
                   <span className="inline-block px-3 py-1 bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-bold rounded-full">
-                    សិស្សបន្ត (Continuing){student.pending_renewal_fee && student.reported_month === null ? ' • គិតកម្រៃគ្រូ' : ''}
+                    សិស្សបន្ត (Continuing){student.remaining_hours !== undefined ? ` • ${student.remaining_hours} ម៉ោង` : ''}{student.pending_renewal_fee && student.reported_month === null ? ' • គិតកម្រៃគ្រូ' : ''}
                   </span>
                 )}
 

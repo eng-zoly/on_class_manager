@@ -613,6 +613,8 @@ export default function App() {
         contact: formData.contact,
         telegram_name: formData.telegram_name,
         notes: formData.notes,
+        remaining_hours: formData.remaining_hours !== undefined ? formData.remaining_hours : editingStudent.remaining_hours,
+        fee_calc_method: formData.fee_calc_method || editingStudent.fee_calc_method,
         pending_renewal_fee: (formData as { pending_renewal_fee?: boolean }).pending_renewal_fee ?? editingStudent.pending_renewal_fee
       };
 
@@ -670,7 +672,9 @@ export default function App() {
         contact: formData.contact,
         telegram_name: formData.telegram_name,
         reported_month: null, // Null initially, reported during payroll freeze
-        pending_renewal_fee: formData.student_type === 'Continuing' ? pendingRenewal : false,
+        remaining_hours: formData.remaining_hours,
+        fee_calc_method: formData.fee_calc_method,
+        pending_renewal_fee: (formData.student_type === 'Continuing' || formData.student_type === 'Transfer') ? pendingRenewal : false,
         exam_date: null,
         exam_result: 'Not Yet',
         notes: formData.notes,
@@ -736,7 +740,7 @@ export default function App() {
   };
 
   // Workflow C: Renewal Handler
-  const handleRenewStudent = (studentId: string, renewalData: { start_date: string; end_date: string; receipt_number: string; include_in_payroll?: boolean }) => {
+  const handleRenewStudent = (studentId: string, renewalData: { start_date: string; end_date: string; receipt_number: string; include_in_payroll?: boolean; remaining_hours?: number; fee_calc_method?: 'hours' | 'days'; student_type?: StudentType }) => {
     const shouldIncludeInPayroll = renewalData.include_in_payroll ?? true;
     const updated = students.map(s => {
       if (s.student_id === studentId) {
@@ -745,7 +749,9 @@ export default function App() {
           start_date: renewalData.start_date,
           end_date: renewalData.end_date,
           receipt_number: renewalData.receipt_number,
-          student_type: 'Continuing' as const,
+          student_type: renewalData.student_type || ('Continuing' as const),
+          remaining_hours: renewalData.remaining_hours !== undefined ? renewalData.remaining_hours : (s.remaining_hours ?? 10),
+          fee_calc_method: renewalData.fee_calc_method || s.fee_calc_method || 'hours',
           pending_renewal_fee: shouldIncludeInPayroll,
           reported_month: shouldIncludeInPayroll ? null : s.reported_month, // Reset to null only if flagged for payroll
           exam_result: 'Not Yet' as const, // Clear fail results to allow learning retake
@@ -898,7 +904,7 @@ export default function App() {
         const unfrozen = {
           ...s,
           reported_month: null,
-          pending_renewal_fee: s.student_type === 'Continuing' ? true : s.pending_renewal_fee
+          pending_renewal_fee: (s.student_type === 'Continuing' || s.student_type === 'Transfer') ? true : s.pending_renewal_fee
         };
         updateStudentInCloud(unfrozen);
         return unfrozen;

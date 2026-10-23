@@ -1,6 +1,6 @@
 export type Gender = 'ប្រុស' | 'ស្រី';
 
-export type StudentType = 'New' | 'Continuing';
+export type StudentType = 'New' | 'Continuing' | 'Transfer';
 
 export type CourseType = 'Computer Basic Office' | 'Advanced Excel';
 
@@ -42,6 +42,8 @@ export interface Student {
   archived?: boolean; // True if archived instead of deleted
   dropout?: boolean; // True if student has dropped out
   pending_renewal_fee?: boolean; // True if renewed and explicitly flagged for teacher payroll renewal fee
+  remaining_hours?: number; // Actual remaining study hours for continuing students (e.g. 10h)
+  fee_calc_method?: 'hours' | 'days'; // 'hours' for continuing, 'days' for transfer
   exam_score_word?: number | null;
   exam_score_excel?: number | null;
   exam_score_powerpoint?: number | null;
@@ -58,10 +60,12 @@ export interface PayrollReport {
   student_count_advanced: number;
   student_count_new?: number;
   student_count_continuing?: number;
+  student_count_transfer?: number;
   rate_office: number; // $7
   rate_advanced: number; // $11
   total_payment_new?: number;
   total_payment_continuing?: number;
+  total_payment_transfer?: number;
   total_payment: number;
   students: {
     student_id: string;
@@ -72,6 +76,8 @@ export interface PayrollReport {
     start_date: string;
     end_date?: string;
     duration_days?: number;
+    remaining_hours?: number;
+    fee_calc_method?: 'hours' | 'days';
     fee?: number;
     student_type?: StudentType;
     pending_renewal_fee?: boolean;

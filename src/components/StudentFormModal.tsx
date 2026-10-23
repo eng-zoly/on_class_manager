@@ -30,6 +30,7 @@ export default function StudentFormModal({
   const [gender, setGender] = useState<Gender>('ប្រុស');
   const [studentType, setStudentType] = useState<StudentType>('New');
   const [pendingRenewalFee, setPendingRenewalFee] = useState<boolean>(false);
+  const [remainingHours, setRemainingHours] = useState<number>(10);
   const [receiptNumber, setReceiptNumber] = useState('');
   const [course, setCourse] = useState<CourseType>('Computer Basic Office');
   const [startDate, setStartDate] = useState('');
@@ -143,6 +144,7 @@ export default function StudentFormModal({
       setGender(student.gender);
       setStudentType(student.student_type);
       setPendingRenewalFee(student.pending_renewal_fee ?? false);
+      setRemainingHours(student.remaining_hours ?? 10);
       setReceiptNumber(student.receipt_number || '');
       setCourse(student.course);
       setStartDate(student.start_date);
@@ -157,6 +159,7 @@ export default function StudentFormModal({
       setGender('ប្រុស');
       setStudentType('New'); // default to New as mandated
       setPendingRenewalFee(false);
+      setRemainingHours(10);
       setReceiptNumber('REC-2026-');
       setCourse('Computer Basic Office');
       setStartDate(referenceDate);
@@ -209,7 +212,9 @@ export default function StudentFormModal({
       full_name: fullName.trim(),
       gender,
       student_type: studentType,
-      pending_renewal_fee: studentType === 'Continuing' ? pendingRenewalFee : false,
+      pending_renewal_fee: (studentType === 'Continuing' || studentType === 'Transfer') ? pendingRenewalFee : false,
+      remaining_hours: remainingHours,
+      fee_calc_method: studentType === 'Transfer' ? 'days' : 'hours',
       receipt_number: receiptNumber.trim(),
       course,
       start_date: startDate,
@@ -386,7 +391,7 @@ export default function StudentFormModal({
                 <Layers className="h-3 w-3 mr-1 text-slate-400" />
                 ប្រភេទសិស្ស (Student Type) *
               </label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => setStudentType('New')}
@@ -401,7 +406,10 @@ export default function StudentFormModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setStudentType('Continuing')}
+                  onClick={() => {
+                    setStudentType('Continuing');
+                    setPendingRenewalFee(true);
+                  }}
                   className={`py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 shadow-3xs ${
                     studentType === 'Continuing'
                       ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-extrabold ring-4 ring-indigo-50'
@@ -411,9 +419,24 @@ export default function StudentFormModal({
                   <span className="h-1.5 w-1.5 rounded-full bg-indigo-500"></span>
                   សិស្សបន្ត (Cont.)
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStudentType('Transfer');
+                    setPendingRenewalFee(true);
+                  }}
+                  className={`py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 shadow-3xs ${
+                    studentType === 'Transfer'
+                      ? 'bg-sky-50 border-sky-500 text-sky-700 font-extrabold ring-4 ring-sky-50'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'
+                  }`}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-sky-500"></span>
+                  សិស្សប្ដូរ (Transfer)
+                </button>
               </div>
               {studentType === 'Continuing' ? (
-                <div className="mt-2 p-2 bg-indigo-50/70 border border-indigo-100 rounded-lg">
+                <div className="mt-2 p-2.5 bg-indigo-50/70 border border-indigo-100 rounded-lg space-y-2.5">
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input
                       type="checkbox"
@@ -427,7 +450,7 @@ export default function StudentFormModal({
                         {pendingRenewalFee ? (
                           <span className="text-emerald-700 flex items-center gap-1 font-semibold">
                             <Check className="h-3 w-3 text-emerald-600" strokeWidth={2} />
-                            <span>គិតបញ្ចូលក្នុងតារាងបើកប្រាក់កម្រៃគ្រូ (គិតតាមរយៈពេលសិក្សា $0.35/ថ្ងៃ ឬ $0.57/ថ្ងៃ)</span>
+                            <span>គិតតាមចំនួនម៉ោងនៅសល់ជាក់ស្ដែង</span>
                           </span>
                         ) : (
                           <span className="text-slate-400 flex items-center gap-1">
@@ -438,10 +461,42 @@ export default function StudentFormModal({
                       </span>
                     </div>
                   </label>
+
+                  {pendingRenewalFee && (
+                    <div className="pt-2 border-t border-indigo-100 flex items-center justify-between gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-indigo-900">ចំនួនម៉ោងនៅសល់ជាក់ស្ដែង (Remaining Hours) *</label>
+                        <p className="text-[9.5px] text-indigo-600 font-medium">
+                          {course.includes('Excel') ? 'Advanced Excel: $0.57/ម៉ោង' : 'Basic Office: $0.35/ម៉ោង'} (ឧ. 0.35 × 10h = 3.5 USD)
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.5"
+                          value={remainingHours}
+                          onChange={(e) => setRemainingHours(parseFloat(e.target.value) || 0)}
+                          className="w-16 px-2 py-1 text-center bg-white border border-indigo-300 rounded-lg text-xs font-bold text-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                        <span className="text-xs font-bold text-indigo-700">ម៉ោង</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : studentType === 'Transfer' ? (
+                <div className="mt-2 p-2.5 bg-sky-50/70 border border-sky-100 rounded-lg space-y-1">
+                  <div className="text-[10px] text-sky-900">
+                    <span className="font-bold">សិស្សប្ដូរ (Transfer Student)៖</span>
+                    <p className="text-sky-700 mt-0.5">
+                      គណនាប្រាក់កម្រៃគ្រូតាមចំនួនថ្ងៃចុះឈ្មោះលើបង្កាន់ដៃបង់ប្រាក់ជាក់ស្ដែង (Start Date ដល់ End Date) x {course.includes('Excel') ? '$0.57/ថ្ងៃ' : '$0.35/ថ្ងៃ'}។
+                    </p>
+                  </div>
                 </div>
               ) : (
                 <p className="text-[9px] text-slate-400 font-medium mt-1">
-                  សិស្សប្រភេទ <span className="font-bold text-emerald-600">New</span> ត្រូវបានគិតប្រាក់កម្រៃគ្រូដោយស្វ័យប្រវត្តិ។
+                  សិស្សប្រភេទ <span className="font-bold text-emerald-600">New</span> ត្រូវបានគិតប្រាក់កម្រៃគ្រូពេញដោយស្វ័យប្រវត្តិ។
                 </p>
               )}
             </div>

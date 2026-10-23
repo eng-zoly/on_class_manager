@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Student, PayrollReport } from '../types';
-import { formatReadableDate, getTelegramLink, calculateStudentDurationDays, getContinuingDailyRate, calculateContinuingStudentFee } from '../utils/studentUtils';
+import { formatReadableDate, getTelegramLink, calculateStudentDurationDays, getContinuingHourlyRate, getContinuingDailyRate, calculateContinuingStudentFeeByHours, calculateTransferStudentFeeByDays } from '../utils/studentUtils';
 import { triggerPrintWithDynamicTitle, formatDateForFilename, sanitizeFilename } from '../utils/printUtils';
-import { DollarSign, Calendar, FileText, CheckCircle2, ChevronDown, ChevronUp, AlertCircle, TrendingUp, Download, Printer, Search, X, Copy, Check, Edit, RotateCcw, AlertTriangle, Trash2, Send, Sparkles } from 'lucide-react';
+import { DollarSign, Calendar, FileText, CheckCircle2, ChevronDown, ChevronUp, AlertCircle, TrendingUp, Download, Printer, Search, X, Copy, Check, Edit, RotateCcw, AlertTriangle, Trash2, Send, Sparkles, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface PayrollCenterProps {
@@ -39,37 +39,38 @@ export default function PayrollCenter({
   const [showFreezeConfirm, setShowFreezeConfirm] = useState(false);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
-  // Helper to accurately determine if a student is continuing / renewed:
-  // - Explicit 'New' status strictly identifies genuine first-time enrollments.
-  // - 'Continuing' status strictly identifies renewed/continuing students.
-  const isContinuingStudent = (item?: {
+  // Helper to accurately determine if a student is continuing / renewed / transfer:
+  const isContinuingOrTransferStudent = (item?: {
     student_id?: string;
     student_type?: string;
     pending_renewal_fee?: boolean;
     is_renewal?: boolean;
   }): boolean => {
     if (!item) return false;
-    // 1. Direct object property check
     if (item.student_type === 'New') return false;
-    if (item.student_type === 'Continuing') return true;
+    if (item.student_type === 'Continuing' || item.student_type === 'Transfer') return true;
 
-    // 2. Lookup in current master roster by student_id
     if (item.student_id) {
       const rosterMatch = students.find(s => s.student_id === item.student_id);
       if (rosterMatch) {
         if (rosterMatch.student_type === 'New') return false;
-        if (rosterMatch.student_type === 'Continuing') return true;
+        if (rosterMatch.student_type === 'Continuing' || rosterMatch.student_type === 'Transfer') return true;
       }
     }
 
-    // 3. Fallback for renewal flags
     if (item.pending_renewal_fee === true || item.is_renewal === true) return true;
     return false;
   };
 
+  const isContinuingStudent = isContinuingOrTransferStudent;
+
   // Helper to compute fee calculation details for any student
   const getStudentFeeInfo = (student: Student | any) => {
-    const isContinuing = isContinuingStudent(student);
+    const rawType = student.student_type;
+    const isNew = rawType === 'New' && !student.pending_renewal_fee && !student.is_renewal;
+    const isTransfer = rawType === 'Transfer' || student.fee_calc_method === 'days';
+    const isContinuing = !isNew && !isTransfer;
+
     const courseName = student.course || '';
     const fullMaster = students.find(s => s.student_id === student.student_id);
     const startDate = student.start_date || fullMaster?.start_date || '';
@@ -77,22 +78,15 @@ export default function PayrollCenter({
     const durationDays = (typeof student.duration_days === 'number' && student.duration_days > 0)
       ? student.duration_days
       : calculateStudentDurationDays(startDate, endDate);
-    const dailyRate = getContinuingDailyRate(courseName);
+    
+    // Remaining hours for continuing students (default 10h if unspecified, or student's remaining_hours)
+    const remainingHours = (typeof student.remaining_hours === 'number' && student.remaining_hours >= 0)
+      ? student.remaining_hours
+      : (fullMaster?.remaining_hours !== undefined ? fullMaster.remaining_hours : 10);
+    
+    const unitRate = getContinuingHourlyRate(courseName);
 
-    if (isContinuing) {
-      const fee = (typeof student.fee === 'number' && !isNaN(student.fee))
-        ? student.fee
-        : calculateContinuingStudentFee(durationDays, courseName);
-      return {
-        fee,
-        isContinuing: true,
-        durationDays,
-        dailyRate,
-        startDate,
-        endDate,
-        formulaStr: `${durationDays} ថ្ងៃ (x $${dailyRate.toFixed(2)}/ថ្ងៃ)`
-      };
-    } else {
+    if (isNew) {
       let baseRate = 7.00;
       if (courseName === 'Advanced Excel') {
         baseRate = 11.00;
@@ -102,12 +96,53 @@ export default function PayrollCenter({
       const fee = (typeof student.fee === 'number' && !isNaN(student.fee)) ? student.fee : baseRate;
       return {
         fee,
+        studentType: 'New' as const,
+        isNew: true,
         isContinuing: false,
+        isTransfer: false,
         durationDays,
-        dailyRate: 0,
+        remainingHours: 0,
+        unitRate: baseRate,
         startDate,
         endDate,
         formulaStr: `អត្រាពេញ ($${fee.toFixed(2)})`
+      };
+    } else if (isTransfer) {
+      // Transfer student (សិស្សប្ដូរ): calculated by days on receipt (Start Date to End Date)
+      const fee = (typeof student.fee === 'number' && !isNaN(student.fee))
+        ? student.fee
+        : calculateTransferStudentFeeByDays(durationDays, courseName);
+      return {
+        fee,
+        studentType: 'Transfer' as const,
+        isNew: false,
+        isContinuing: false,
+        isTransfer: true,
+        durationDays,
+        remainingHours,
+        unitRate,
+        startDate,
+        endDate,
+        formulaStr: `${durationDays} ថ្ងៃ (x $${unitRate.toFixed(2)}/ថ្ងៃ) [សិស្សប្ដូរ]`
+      };
+    } else {
+      // Continuing student (សិស្សបន្ត): calculated by actual remaining study hours
+      // Example: 0.35 * 10h = 3.5 USD
+      const fee = (typeof student.fee === 'number' && !isNaN(student.fee))
+        ? student.fee
+        : calculateContinuingStudentFeeByHours(remainingHours, courseName);
+      return {
+        fee,
+        studentType: 'Continuing' as const,
+        isNew: false,
+        isContinuing: true,
+        isTransfer: false,
+        durationDays,
+        remainingHours,
+        unitRate,
+        startDate,
+        endDate,
+        formulaStr: `${remainingHours}h (x $${unitRate.toFixed(2)}/h)`
       };
     }
   };
@@ -191,7 +226,7 @@ export default function PayrollCenter({
 
     printingReport.students.forEach(s => {
       const feeInfo = getStudentFeeInfo(s);
-      if (feeInfo.isContinuing) {
+      if (feeInfo.isContinuing || feeInfo.isTransfer) {
         rawContinuing.push(s);
         calcTotalContinuing += feeInfo.fee;
       } else {
@@ -333,7 +368,7 @@ export default function PayrollCenter({
 
     report.students.forEach(s => {
       const feeInfo = getStudentFeeInfo(s);
-      if (feeInfo.isContinuing) {
+      if (feeInfo.isContinuing || feeInfo.isTransfer) {
         continuingStudents.push({ ...s, feeInfo });
         sumCont += feeInfo.fee;
       } else {
@@ -362,11 +397,14 @@ export default function PayrollCenter({
     }
 
     if (continuingStudents.length > 0) {
-      text += `[ ២. បញ្ជីឈ្មោះសិស្សសិក្សាបន្ត (${continuingStudents.length} នាក់) ]\n`;
+      text += `[ ២. បញ្ជីឈ្មោះសិស្សសិក្សាបន្ត/ប្ដូរ (${continuingStudents.length} នាក់) ]\n`;
       continuingStudents.forEach((s, idx) => {
         const fullStudentInfo = students.find(master => master.student_id === s.student_id);
         const desc = (s.notes || (s as any).description || fullStudentInfo?.notes || (fullStudentInfo as any)?.description || '').trim();
-        text += `${idx + 1}. [${s.student_id}] ${s.full_name} (${s.gender}) - វគ្គ៖ ${s.course} - វិក្កយបត្រ៖ ${s.receipt_number} - រយៈពេល៖ ${s.feeInfo.durationDays} ថ្ងៃ ($${s.feeInfo.dailyRate.toFixed(2)}/ថ្ងៃ) - កាលបរិច្ឆេទ៖ ${s.start_date} ដល់ ${s.end_date || s.feeInfo.endDate || ''} - កម្រៃ៖ $${s.feeInfo.fee.toFixed(2)}${desc ? ` - Description: ${desc}` : ''}\n`;
+        const durationStr = s.feeInfo.isTransfer 
+          ? `${s.feeInfo.durationDays} ថ្ងៃ ($${s.feeInfo.unitRate.toFixed(2)}/ថ្ងៃ) [សិស្សប្ដូរ]`
+          : `${s.feeInfo.remainingHours} ម៉ោង ($${s.feeInfo.unitRate.toFixed(2)}/h) [សិស្សបន្ត]`;
+        text += `${idx + 1}. [${s.student_id}] ${s.full_name} (${s.gender}) - វគ្គ៖ ${s.course} - វិក្កយបត្រ៖ ${s.receipt_number} - រយៈពេល៖ ${durationStr} - កាលបរិច្ឆេទ៖ ${s.start_date} ដល់ ${s.end_date || s.feeInfo.endDate || ''} - កម្រៃ៖ $${s.feeInfo.fee.toFixed(2)}${desc ? ` - Description: ${desc}` : ''}\n`;
       });
       text += `\n`;
     }
@@ -379,15 +417,30 @@ export default function PayrollCenter({
 
   // Eligible students for the current payroll draft: only sum up:
   // (A) Truly 'New' students where reported_month === null, PLUS
-  // (B) 'Renewed' (Continuing) students who were explicitly flagged via pending_renewal_fee === true and reported_month === null
+  // (B) 'Renewed' (Continuing) or 'Transfer' students who were explicitly flagged via pending_renewal_fee === true and reported_month === null
   const draftStudents = useMemo(() => {
     return students.filter(s => 
       !s.archived && 
       !s.dropout && 
       s.reported_month === null && 
-      (s.student_type === 'New' || (s.student_type === 'Continuing' && s.pending_renewal_fee === true))
+      (s.student_type === 'New' || ((s.student_type === 'Continuing' || s.student_type === 'Transfer') && s.pending_renewal_fee === true))
     );
   }, [students]);
+
+  // Handle instant inline hour update directly from Draft table
+  const handleUpdateStudentHours = (studentId: string, hours: number) => {
+    const updated = students.map(s => {
+      if (s.student_id === studentId) {
+        return {
+          ...s,
+          remaining_hours: hours,
+          fee_calc_method: 'hours' as const
+        };
+      }
+      return s;
+    });
+    updateStudentsWithHistory(updated);
+  };
 
   // Compute draft calculations dynamically for all courses in courseConfig
   const draftMetrics = useMemo(() => {
@@ -444,7 +497,7 @@ export default function PayrollCenter({
       item.students.push(student);
 
       const feeInfo = getStudentFeeInfo(student);
-      if (feeInfo.isContinuing) {
+      if (feeInfo.isContinuing || feeInfo.isTransfer) {
         countContinuing += 1;
         totalContinuing += feeInfo.fee;
         item.countContinuing += 1;
@@ -510,8 +563,10 @@ export default function PayrollCenter({
           start_date: s.start_date,
           end_date: s.end_date,
           duration_days: feeInfo.durationDays,
+          remaining_hours: feeInfo.remainingHours,
+          fee_calc_method: feeInfo.isTransfer ? 'days' : (feeInfo.isContinuing ? 'hours' : undefined),
           fee: feeInfo.fee,
-          student_type: feeInfo.isContinuing ? 'Continuing' : 'New',
+          student_type: feeInfo.studentType,
           pending_renewal_fee: s.pending_renewal_fee,
           telegram_name: s.telegram_name || '',
           contact: s.contact || '',
@@ -626,8 +681,10 @@ export default function PayrollCenter({
                             start_date: s.start_date,
                             end_date: s.end_date,
                             duration_days: feeInfo.durationDays,
+                            remaining_hours: feeInfo.remainingHours,
+                            fee_calc_method: feeInfo.isTransfer ? 'days' : (feeInfo.isContinuing ? 'hours' : undefined),
                             fee: feeInfo.fee,
-                            student_type: feeInfo.isContinuing ? 'Continuing' : 'New',
+                            student_type: feeInfo.studentType,
                             pending_renewal_fee: s.pending_renewal_fee,
                             telegram_name: s.telegram_name || '',
                             contact: s.contact || '',
@@ -693,9 +750,9 @@ export default function PayrollCenter({
                   </p>
                 </div>
                 <div className="pt-2 mt-2 border-t border-indigo-100/80 text-[10.5px] text-indigo-700 font-medium flex items-center justify-between">
-                  <span>Basic ($0.35/ថ្ងៃ)</span>
-                  <span>Excel ($0.57/ថ្ងៃ)</span>
-                  <span className="italic">*តាមរយៈពេល</span>
+                  <span>Basic ($0.35/h)</span>
+                  <span>Excel ($0.57/h)</span>
+                  <span className="italic">*តាមម៉ោងនៅសល់/ថ្ងៃ</span>
                 </div>
               </div>
 
@@ -786,7 +843,12 @@ export default function PayrollCenter({
                             <td className="py-3 px-4 font-semibold text-gray-800">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="font-medium text-gray-900 text-xs sm:text-sm">{student.full_name} ({student.gender})</span>
-                                {feeInfo.isContinuing ? (
+                                {feeInfo.isTransfer ? (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                    <Clock className="h-2.5 w-2.5" strokeWidth={2.5} />
+                                    <span>សិស្សប្ដូរ (TRANSFER)</span>
+                                  </span>
+                                ) : feeInfo.isContinuing ? (
                                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
                                     <RotateCcw className="h-2.5 w-2.5" strokeWidth={2.5} />
                                     <span>សិក្សាបន្ត (CONT)</span>
@@ -836,24 +898,36 @@ export default function PayrollCenter({
                             </td>
                             <td className="py-3 px-4">
                               <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                                feeInfo.isContinuing 
-                                  ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' 
-                                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                feeInfo.isTransfer
+                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                  : feeInfo.isContinuing 
+                                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' 
+                                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                               }`}>
-                                {feeInfo.isContinuing ? 'សិស្សបន្ត (Renewed)' : 'សិស្សថ្មី (New)'}
+                                {feeInfo.isTransfer ? 'សិស្សប្ដូរ (Transfer)' : (feeInfo.isContinuing ? 'សិស្សបន្ត (Renewed)' : 'សិស្សថ្មី (New)')}
                               </span>
                             </td>
                             <td className="py-3 px-4 font-mono text-gray-500">{student.receipt_number}</td>
                             <td className="py-3 px-4 font-medium text-gray-700">{student.course}</td>
                             <td className="py-3 px-4 text-gray-500 text-xs">
-                              {feeInfo.isContinuing ? (
+                              {feeInfo.isTransfer ? (
+                                <div>
+                                  <span className="font-mono">{student.start_date}</span>
+                                  {student.end_date && (
+                                    <span className="block text-[10px] text-gray-400 font-mono">ដល់ {student.end_date}</span>
+                                  )}
+                                  <span className="inline-block mt-0.5 text-[9.5px] font-bold text-amber-700 bg-amber-50 px-1 rounded">
+                                    {feeInfo.durationDays} ថ្ងៃ (តាមបង្កាន់ដៃ)
+                                  </span>
+                                </div>
+                              ) : feeInfo.isContinuing ? (
                                 <div>
                                   <span className="font-mono">{student.start_date}</span>
                                   {student.end_date && (
                                     <span className="block text-[10px] text-gray-400 font-mono">ដល់ {student.end_date}</span>
                                   )}
                                   <span className="inline-block mt-0.5 text-[9.5px] font-bold text-indigo-600 bg-indigo-50 px-1 rounded">
-                                    {feeInfo.durationDays} ថ្ងៃ
+                                    នៅសល់ {feeInfo.remainingHours} ម៉ោង
                                   </span>
                                 </div>
                               ) : (
@@ -861,11 +935,30 @@ export default function PayrollCenter({
                               )}
                             </td>
                             <td className="py-3 px-4 text-right">
-                              {feeInfo.isContinuing ? (
+                              {feeInfo.isTransfer ? (
                                 <div>
-                                  <span className="font-bold text-indigo-600 font-mono text-sm">${feeInfo.fee.toFixed(2)}</span>
-                                  <span className="block text-[9.5px] text-indigo-500 font-mono">
-                                    {feeInfo.durationDays} ថ្ងៃ &times; ${feeInfo.dailyRate.toFixed(2)}/ថ្ងៃ
+                                  <span className="font-bold text-amber-700 font-mono text-sm">${feeInfo.fee.toFixed(2)}</span>
+                                  <span className="block text-[9.5px] text-amber-600 font-mono">
+                                    {feeInfo.durationDays} ថ្ងៃ &times; ${feeInfo.unitRate.toFixed(2)}/ថ្ងៃ
+                                  </span>
+                                </div>
+                              ) : feeInfo.isContinuing ? (
+                                <div>
+                                  <div className="flex items-center justify-end gap-1">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="100"
+                                      step="1"
+                                      value={feeInfo.remainingHours}
+                                      onChange={(e) => handleUpdateStudentHours(student.student_id, Math.max(0, parseFloat(e.target.value) || 0))}
+                                      className="w-14 px-1 py-0.5 text-xs text-right border border-indigo-200 rounded font-mono font-bold text-indigo-700 bg-indigo-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                      title="កែសម្រួលចំនួនម៉ោងនៅសល់ជាក់ស្ដែង (Edit Remaining Hours)"
+                                    />
+                                    <span className="text-[10px] text-indigo-600 font-bold">h</span>
+                                  </div>
+                                  <span className="block text-[9.5px] text-indigo-600 font-mono mt-0.5">
+                                    {feeInfo.remainingHours}h &times; ${feeInfo.unitRate.toFixed(2)}/h = <strong className="text-indigo-800">${feeInfo.fee.toFixed(2)}</strong>
                                   </span>
                                 </div>
                               ) : (
@@ -929,8 +1022,10 @@ export default function PayrollCenter({
                               start_date: s.start_date,
                               end_date: s.end_date,
                               duration_days: feeInfo.durationDays,
+                              remaining_hours: feeInfo.remainingHours,
+                              fee_calc_method: feeInfo.isTransfer ? 'days' : (feeInfo.isContinuing ? 'hours' : undefined),
                               fee: feeInfo.fee,
-                              student_type: feeInfo.isContinuing ? 'Continuing' : 'New',
+                              student_type: feeInfo.studentType,
                               pending_renewal_fee: s.pending_renewal_fee,
                               telegram_name: s.telegram_name || '',
                               contact: s.contact || '',
@@ -1257,7 +1352,7 @@ export default function PayrollCenter({
                       {/* Section B: Continuing students courses */}
                       {printAnalysis.continuingGroups.length > 0 ? (
                         printAnalysis.continuingGroups.map(group => {
-                          const dailyRate = getContinuingDailyRate(group.courseName);
+                          const unitRate = getContinuingHourlyRate(group.courseName);
                           return (
                             <tr key={`sum-cont-${group.courseName}`} className="print-break-inside-avoid avoid-break">
                               <td className="p-3 font-semibold text-slate-800">{group.courseName}</td>
@@ -1268,7 +1363,7 @@ export default function PayrollCenter({
                               </td>
                               <td className="p-3 text-center font-bold">{group.count} នាក់</td>
                               <td className="p-3 text-right font-mono text-[11px] text-indigo-700">
-                                ${dailyRate.toFixed(2)}/ថ្ងៃ
+                                ${unitRate.toFixed(2)}/ម៉ោង
                               </td>
                               <td className="p-3 text-right font-bold text-indigo-700 font-mono">
                                 ${group.subtotal.toFixed(2)}
@@ -1464,7 +1559,7 @@ export default function PayrollCenter({
                         <th className="py-2.5 px-3 w-24">លេខវិក្កយបត្រ (Receipt)</th>
                         <th className="py-2.5 px-3">វគ្គសិក្សា (Course)</th>
                         <th className="py-2.5 px-3 min-w-[110px]">កាលបរិច្ឆេទ (Period)</th>
-                        <th className="py-2.5 px-3 min-w-[110px]">រយៈពេលសិក្សា (Duration)</th>
+                        <th className="py-2.5 px-3 min-w-[120px]">រយៈពេល/ម៉ោងសិក្សា (Duration)</th>
                         <th className="py-2.5 px-3 min-w-[120px]">ការពិពណ៌នា (Description)</th>
                         <th className="py-2.5 px-3 w-24 text-right">តម្លៃកម្រៃ (Amount)</th>
                       </tr>
@@ -1479,7 +1574,7 @@ export default function PayrollCenter({
                       ) : (
                         printAnalysis.continuingGroups.map(group => {
                           let studentIndex = 0;
-                          const dailyRate = getContinuingDailyRate(group.courseName);
+                          const unitRate = getContinuingHourlyRate(group.courseName);
                           return (
                             <React.Fragment key={`cont-course-${group.courseName}`}>
                               <tr className="course-subheading-row bg-slate-100 font-bold border-t-2 border-b border-slate-300 print-break-inside-avoid avoid-break avoid-break-after">
@@ -1487,7 +1582,7 @@ export default function PayrollCenter({
                                   <div className="flex items-center justify-between">
                                     <span className="font-extrabold text-slate-900 flex items-center gap-2">
                                       <span className="inline-block w-2 h-2 rounded-full bg-indigo-600 mr-0.5" />
-                                      វគ្គសិក្សា (Course)៖ {group.courseName} (អត្រា៖ ${dailyRate.toFixed(2)}/ថ្ងៃ)
+                                      វគ្គសិក្សា (Course)៖ {group.courseName} (អត្រា៖ ${unitRate.toFixed(2)}/ម៉ោង)
                                     </span>
                                     <span className="text-[11px] font-bold text-slate-700 font-mono">
                                       {group.count} នាក់ | សរុប = ${group.subtotal.toFixed(2)}
@@ -1525,9 +1620,15 @@ export default function PayrollCenter({
                                         <td className="py-2 px-3">
                                           <div className="flex items-center gap-1.5 flex-wrap">
                                             <span className="font-semibold text-gray-900 text-xs sm:text-sm">{student.full_name} ({student.gender})</span>
-                                            <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[8.5px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                              [សិក្សាបន្ត]
-                                            </span>
+                                            {feeInfo.isTransfer ? (
+                                              <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[8.5px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                                [សិស្សប្ដូរ]
+                                              </span>
+                                            ) : (
+                                              <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[8.5px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                                [សិក្សាបន្ត]
+                                              </span>
+                                            )}
                                           </div>
                                           {studentUsername && (
                                             <div className="mt-0.5 flex items-center gap-1 text-[11px] text-gray-500 leading-tight">
@@ -1555,9 +1656,15 @@ export default function PayrollCenter({
                                           <div className="text-gray-400 text-[10px]">ដល់ {student.end_date || feeInfo.endDate || '-'}</div>
                                         </td>
                                         <td className="py-2 px-3 text-indigo-900 font-semibold text-[11px]">
-                                          <span className="inline-block px-1.5 py-0.5 bg-indigo-50 border border-indigo-200 rounded font-mono text-[10.5px]">
-                                            {feeInfo.durationDays} ថ្ងៃ (x ${feeInfo.dailyRate.toFixed(2)}/ថ្ងៃ)
-                                          </span>
+                                          {feeInfo.isTransfer ? (
+                                            <span className="inline-block px-1.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 rounded font-mono text-[10.5px]">
+                                              {feeInfo.durationDays} ថ្ងៃ (x ${feeInfo.unitRate.toFixed(2)}/ថ្ងៃ)
+                                            </span>
+                                          ) : (
+                                            <span className="inline-block px-1.5 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded font-mono text-[10.5px]">
+                                              {feeInfo.remainingHours} ម៉ោង (x ${feeInfo.unitRate.toFixed(2)}/h)
+                                            </span>
+                                          )}
                                         </td>
                                         <td className="py-2 px-3 text-slate-700 print:text-black text-xs break-words whitespace-normal font-normal">
                                           {studentDescription ? (
@@ -1834,10 +1941,15 @@ export default function PayrollCenter({
               <form onSubmit={(e) => {
                 e.preventDefault();
                 const formData = new FormData(e.currentTarget);
+                const studentType = (formData.get('studentType') as any) || editingDraftStudent.student_type;
+                const remainingHoursVal = parseFloat(formData.get('remainingHours') as string);
                 const updated: Student = {
                   ...editingDraftStudent,
                   full_name: formData.get('fullName') as string,
                   gender: formData.get('gender') as 'ប្រុស' | 'ស្រី',
+                  student_type: studentType,
+                  remaining_hours: !isNaN(remainingHoursVal) ? remainingHoursVal : editingDraftStudent.remaining_hours,
+                  fee_calc_method: studentType === 'Transfer' ? 'days' : (studentType === 'Continuing' ? 'hours' : undefined),
                   receipt_number: formData.get('receiptNumber') as string,
                   course: formData.get('course') as any,
                   start_date: formData.get('startDate') as string,
@@ -1847,6 +1959,41 @@ export default function PayrollCenter({
                 handleSaveDraftEdit(updated);
               }} className="space-y-4">
                 <div className="space-y-3.5 text-xs">
+                  {/* Student Type */}
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-gray-700">ប្រភេទសិស្ស (Student Type)</label>
+                    <select
+                      name="studentType"
+                      defaultValue={editingDraftStudent.student_type || 'New'}
+                      required
+                      className="w-full px-3 py-2 bg-slate-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-semibold text-gray-800"
+                    >
+                      <option value="New">សិស្សថ្មី (New Student) — អត្រាពេញ ($7 / $11)</option>
+                      <option value="Continuing">សិស្សបន្ត (Continuing Student) — គិតតាមម៉ោងនៅសល់</option>
+                      <option value="Transfer">សិស្សប្ដូរ (Transfer Student) — គិតតាមថ្ងៃលើបង្កាន់ដៃ</option>
+                    </select>
+                  </div>
+
+                  {/* Remaining Hours (for Continuing students) */}
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-gray-700">ចំនួនម៉ោងនៅសល់ (Remaining Hours)</label>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="number"
+                        name="remainingHours"
+                        min="0"
+                        max="100"
+                        step="1"
+                        defaultValue={editingDraftStudent.remaining_hours !== undefined ? editingDraftStudent.remaining_hours : 10}
+                        className="w-full px-3 py-2 bg-slate-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-mono font-bold"
+                      />
+                      <span className="text-xs text-gray-500 font-medium">ម៉ោង</span>
+                    </div>
+                    <p className="text-[10px] text-gray-400">
+                      សម្រាប់សិស្សបន្ត៖ គុណនិងអត្រាក្នុងមួយម៉ោង (Office: $0.35/h | Excel: $0.57/h)
+                    </p>
+                  </div>
+
                   {/* Name */}
                   <div className="space-y-1">
                     <label className="block text-xs font-bold text-gray-700">ឈ្មោះសិស្ស (Full Name)</label>

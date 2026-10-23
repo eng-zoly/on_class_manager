@@ -112,6 +112,7 @@ export const INITIAL_STUDENTS: Student[] = [
     contact: '+855 88 777 6655',
     reported_month: null, // Continuing student renewal eligible for payroll
     pending_renewal_fee: true, // Flagged for renewal payroll fee
+    remaining_hours: 10, // 10h remaining: 10 * 0.35 = 3.50 USD
     exam_date: null,
     exam_result: 'Not Yet',
     notes: 'Transferred from offline class. Highly motivated.',

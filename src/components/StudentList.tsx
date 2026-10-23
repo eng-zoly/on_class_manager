@@ -367,6 +367,7 @@ function StudentList({
               <option value="all">ប្រភេទសិស្ស (All Types)</option>
               <option value="New">សិស្សថ្មី (New)</option>
               <option value="Continuing">សិស្សបន្ត (Continuing)</option>
+              <option value="Transfer">សិស្សប្ដូរ (Transfer)</option>
             </select>
           </div>
 
@@ -556,12 +557,17 @@ function StudentList({
                       <div className="font-semibold text-gray-900 flex items-center space-x-1.5 flex-wrap">
                         <span>{student.full_name}</span>
                         <span className="text-xs text-gray-400">({student.gender === 'ប្រុស' ? 'ប្រុស' : 'ស្រី'})</span>
-                        {student.student_type === 'Continuing' && (
+                        {student.student_type === 'Transfer' ? (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 shadow-2xs">
+                            <Clock className="h-2.5 w-2.5 text-amber-600" strokeWidth={2} />
+                            <span>សិស្សប្ដូរ</span>
+                          </span>
+                        ) : student.student_type === 'Continuing' ? (
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200 shadow-2xs">
                             <RotateCcw className="h-2.5 w-2.5 text-indigo-600" strokeWidth={2} />
                             <span>សិក្សាបន្ត</span>
                           </span>
-                        )}
+                        ) : null}
                         {(() => {
                           const multiCourseCount = studentNameCounts.get(student.full_name.trim().toLowerCase()) || 0;
                           return multiCourseCount > 1 ? (
@@ -613,16 +619,29 @@ function StudentList({
                           <Sparkles className="h-3 w-3 text-emerald-600" strokeWidth={2} />
                           <span>សិស្សថ្មី (New)</span>
                         </span>
-                      ) : (
+                      ) : student.student_type === 'Transfer' ? (
                         <div className="flex flex-col items-start gap-1">
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
-                            <RotateCcw className="h-3 w-3 text-indigo-600" strokeWidth={2} />
-                            <span>សិស្សបន្ត (Continuing)</span>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                            <Clock className="h-3 w-3 text-amber-600" strokeWidth={2} />
+                            <span>សិស្សប្ដូរ (Transfer)</span>
                           </span>
                           {student.pending_renewal_fee && student.reported_month === null && (
                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
                               <DollarSign className="h-2.5 w-2.5 text-amber-600" strokeWidth={2} />
                               <span>+ គិតកម្រៃ (Fee)</span>
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-start gap-1">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                            <RotateCcw className="h-3 w-3 text-indigo-600" strokeWidth={2} />
+                            <span>សិស្សបន្ត (Continuing){student.remaining_hours !== undefined ? ` • ${student.remaining_hours}h` : ''}</span>
+                          </span>
+                          {student.pending_renewal_fee && student.reported_month === null && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200">
+                              <DollarSign className="h-2.5 w-2.5 text-indigo-600" strokeWidth={2} />
+                              <span>+ គិតកម្រៃ ({student.remaining_hours || 10}h)</span>
                             </span>
                           )}
                         </div>
